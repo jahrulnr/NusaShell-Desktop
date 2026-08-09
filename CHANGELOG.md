@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-08-10
+
+### Added
+
+- **Stable client-side prompt-cache identity.** Agent turns now derive a
+  provider/model/conversation-scoped cache key and preserve it across normal,
+  auto-continue, and resume requests. OpenAI-compatible adapters forward the
+  key as `prompt_cache_key` when caching is enabled.
+- **TODO continuation fallback.** Room-local TODO state can recover a missing
+  auto-continue decision so open checklists do not become stranded.
+
+### Changed
+
+- **Context update token handling.** Live context badges can be refreshed from
+  context-update events, keeping displayed token estimates aligned with the
+  current request context.
+- **Agent conversation and prompt contracts.** Conversation steering and
+  continuation handling were simplified, while system and continuation
+  prompts now clarify active user instructions, halt behavior, TODO completion,
+  and path reporting.
+
+### Fixed
+
+- Prompt-cache routing now remains stable through the resume path instead of
+  being dropped while the compactor rebuilds injected context.
+
 ## [0.7.0] - 2026-08-09
 
 ### Added

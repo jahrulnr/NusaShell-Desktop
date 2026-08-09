@@ -81,6 +81,41 @@ describe("applyVars", () => {
 });
 
 describe("injectPrompts", () => {
+  it("derives a stable provider cache key for the same conversation", () => {
+    const first = injectPrompts(prompts, vars, [{ role: "user", content: "hello" }], undefined, undefined, undefined, undefined, undefined, {
+      providerId: "openrouter",
+      model: "deepseek/deepseek-v4-flash-0731",
+      conversationId: "conv-1",
+    });
+    const second = injectPrompts(prompts, vars, [{ role: "user", content: "next" }], undefined, undefined, undefined, undefined, undefined, {
+      providerId: "openrouter",
+      model: "deepseek/deepseek-v4-flash-0731",
+      conversationId: "conv-1",
+    });
+
+    expect(first.promptCache.key).toBeTruthy();
+    expect(second.promptCache.key).toBe(first.promptCache.key);
+    expect(first.promptCache.key).toMatch(/^pc_[a-f0-9]{64}$/);
+  });
+
+  it("isolates prompt cache keys across conversations and models", () => {
+    const identity = {
+      providerId: "openrouter",
+      model: "deepseek/deepseek-v4-flash-0731",
+      conversationId: "conv-1",
+    };
+    const otherConversation = injectPrompts(prompts, vars, [], undefined, undefined, undefined, undefined, undefined, {
+      ...identity,
+      conversationId: "conv-2",
+    });
+    const otherModel = injectPrompts(prompts, vars, [], undefined, undefined, undefined, undefined, undefined, {
+      ...identity,
+      model: "deepseek/deepseek-v4-flash-0324",
+    });
+
+    expect(otherConversation.promptCache.key).not.toBe(otherModel.promptCache.key);
+  });
+
   it("does not inject a legacy developer prompt into the default request", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "hello" }];
     const result = injectPrompts([

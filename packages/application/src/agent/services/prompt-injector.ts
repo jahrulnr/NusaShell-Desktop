@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AgentMessage, AgentPromptCachePolicy } from "../ports/agent-provider.port.js";
 import type { AgentPrompt } from "../ports/prompt-loader.port.js";
 
@@ -16,6 +17,12 @@ export interface PromptVars {
   readonly availableSubagents?: string;
   /** The user-configured default ACP provider ID (e.g. "gemini"). */
   readonly defaultSubagent?: string;
+}
+
+export interface PromptCacheIdentity {
+  readonly providerId: string;
+  readonly model: string;
+  readonly conversationId: string;
 }
 
 const STATIC_PROMPT_NAMES = ["system", "mcp-tools"];
@@ -82,6 +89,7 @@ export function injectPrompts(
   todoPrompt?: string,
   skillsCatalogPrompt?: string,
   continuePrompt?: string,
+  promptCacheIdentity?: PromptCacheIdentity,
 ): InjectPromptsResult {
   const staticPrompts = prompts.filter(
     (prompt) => STATIC_PROMPT_NAMES.includes(prompt.name) && !prompt.isTemplate,
@@ -165,8 +173,18 @@ export function injectPrompts(
     promptCache: {
       mode: "auto",
       ...(stableSystemMessages > 0 ? { stableSystemMessages } : {}),
+      ...(promptCacheIdentity ? { key: promptCacheKey(promptCacheIdentity) } : {}),
     },
   };
+}
+
+function promptCacheKey(identity: PromptCacheIdentity): string {
+  const canonical = JSON.stringify([
+    identity.providerId,
+    identity.model,
+    identity.conversationId,
+  ]);
+  return `pc_${createHash("sha256").update(canonical, "utf8").digest("hex")}`;
 }
 
 export function applyVars(text: string, vars: PromptVars): string {

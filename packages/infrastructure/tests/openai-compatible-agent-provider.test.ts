@@ -173,6 +173,31 @@ describe("OpenAiCompatibleAgentProvider", () => {
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).not.toHaveProperty("prompt_cache_key");
   });
 
+  it("sends the client-provided cache routing key for chat requests", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      model: "model",
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const provider = new OpenAiCompatibleAgentProvider({
+      baseUrl: "https://provider.example/v1",
+      apiKey: "secret-key",
+      fetchFn,
+    });
+
+    await provider.complete({
+      traceId: "trace-cache-key",
+      round: 1,
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+      model: "model",
+      promptCache: { mode: "auto", key: "pc_abc123" },
+    });
+
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toMatchObject({
+      prompt_cache_key: "pc_abc123",
+    });
+  });
+
   it("omits authorization for local gateways that do not require a key", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       model: "local-model",

@@ -52,6 +52,49 @@ const RUNTIME = {
 };
 
 describe("RunAgentTurnHandler lifecycle callbacks", () => {
+  it("threads a stable prompt cache key into normal provider requests", async () => {
+    const provider = new ScriptedProvider([{ text: "ok" }]);
+    const handler = new RunAgentTurnHandler(
+      makeRegistry(provider), new FakeToolGateway(), "scripted", RUNTIME,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      fakePromptLoader, undefined, undefined, undefined, undefined, undefined, undefined,
+    );
+
+    await handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-cache-key",
+      conversationId: "conv-cache-key",
+      providerId: "scripted",
+      model: "model-a",
+      messages: [{ role: "user", content: "hello" }],
+      pluginIds: [],
+    });
+
+    expect(provider.requests[0]?.promptCache?.key).toMatch(/^pc_[a-f0-9]{64}$/);
+  });
+
+  it("preserves the prompt cache key on the live resume request", async () => {
+    const provider = new ScriptedProvider([{ text: "ok" }]);
+    const handler = new RunAgentTurnHandler(
+      makeRegistry(provider), new FakeToolGateway(), "scripted", RUNTIME,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      fakePromptLoader, undefined, undefined, undefined, undefined, undefined, undefined,
+    );
+
+    await handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-cache-resume",
+      conversationId: "conv-cache-resume",
+      providerId: "scripted",
+      model: "model-a",
+      messages: [{ role: "user", content: "resume" }],
+      pluginIds: [],
+      resume: true,
+    });
+
+    expect(provider.requests.at(-1)?.promptCache?.key).toMatch(/^pc_[a-f0-9]{64}$/);
+  });
+
   it("queues and applies a user steer to the active trace without cancelling it", async () => {
     const { InMemoryActiveTurnProjection } = await import("../src/index.js");
     let releaseFirst!: (result: AgentProviderResult) => void;

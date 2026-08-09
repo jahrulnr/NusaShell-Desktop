@@ -54,6 +54,7 @@ export {
   stableCurrentDate,
   machineCurrentTime,
   machineTimeZone,
+  type PromptCacheIdentity,
   type PromptVars,
   type PromptInjectionSummary,
   type InjectPromptsResult,

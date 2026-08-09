@@ -224,13 +224,19 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
     const injected = command.resume
       ? { messages: command.messages }
       : await this.injectSystemPrompts(command, traceId);
-    const promptCache = "promptCache" in injected ? injected.promptCache : undefined;
     // On a resume path the live messages skip injectSystemPrompts for cost. The
     // compactor still needs the injected system prefix so its summarizer sees
     // the same session context as a normal turn; supply it separately.
     const resumeInjected = command.resume
       ? await this.injectSystemPrompts(command, traceId)
       : undefined;
+    // Resume requests still need the same conversation-scoped cache identity
+    // as normal and auto-continue turns. The injected messages are only used
+    // as compaction context; the cache policy is safe to reuse on the live
+    // resume payload.
+    const promptCache = command.resume
+      ? resumeInjected?.promptCache
+      : ("promptCache" in injected ? injected.promptCache : undefined);
     const systemContext = resumeInjected?.messages.filter((message) => message.role === "system");
     // Hydration is assembled once per boundary (missing checkpoint / post-compaction)
     // and appended AFTER real history (Option B). On a resume path we
@@ -573,7 +579,23 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
       const continuePrompt = (command.autoContinueIndex ?? 0) > 0
         ? await this.loadContinuePrompt()
         : undefined;
-      const { messages: injected, summary, promptCache } = injectPrompts(prompts, vars, command.messages, command.userPrompt ?? this.userPrompt, memoryPrompt, todoPrompt, skillsCatalogPrompt, continuePrompt);
+      const { messages: injected, summary, promptCache } = injectPrompts(
+        prompts,
+        vars,
+        command.messages,
+        command.userPrompt ?? this.userPrompt,
+        memoryPrompt,
+        todoPrompt,
+        skillsCatalogPrompt,
+        continuePrompt,
+        command.providerId && command.model && command.conversationId
+          ? {
+              providerId: command.providerId,
+              model: command.model,
+              conversationId: command.conversationId,
+            }
+          : undefined,
+      );
       this.logger?.debug(summary.toDebugLine(traceId));
       return { messages: injected, promptCache };
     } catch (error) {
