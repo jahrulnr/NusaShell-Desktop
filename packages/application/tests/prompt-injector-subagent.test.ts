@@ -21,7 +21,7 @@ describe("injectPrompts — subagent prompt", () => {
     { name: "mcp-tools", content: "MCP tools prompt", isTemplate: false },
   ];
 
-  it("injects subagent prompt after static prompts when provided", () => {
+  it("subagent delegation guide is not injected as a system prompt (snapshot-only now)", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "Hello" }];
     const result = inject(
       staticPrompts,
@@ -29,35 +29,33 @@ describe("injectPrompts — subagent prompt", () => {
       messages,
       undefined,
       undefined,
-      "Subagent delegation guide",
+      undefined,
+      undefined,
+      undefined,
     );
     const systemContents = result.filter((m) => m.role === "system").map((m) => m.content as string);
-    expect(systemContents).toContain("Subagent delegation guide");
-    const subagentIdx = systemContents.indexOf("Subagent delegation guide");
-    expect(subagentIdx).toBeGreaterThan(-1);
+    expect(systemContents).not.toContain("Subagent delegation guide");
+    // The delegation guide now ships inside the runtime_context JSON snapshot,
+    // not as a system-prompt injection (see runtime-hydration tests).
+    expect(systemContents).not.toContain("Available ACP agents");
   });
 
-  it("does not inject subagent prompt when undefined", () => {
+  it("does not inject a subagent prompt when undefined", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "Hello" }];
     const result = inject(staticPrompts, vars, messages);
     const systemContents = result.filter((m) => m.role === "system").map((m) => m.content as string);
     expect(systemContents).not.toContain("Subagent delegation guide");
   });
 
-  it("injects subagent prompt before user prompt", () => {
+  it("does not inject subagent delegation guide into system prompts (moved to runtime_context snapshot)", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "Hello" }];
-    const result = inject(
-      staticPrompts,
-      vars,
-      messages,
-      "User custom prompt",
-      undefined,
-      "Subagent guide",
-    );
+    const result = inject(staticPrompts, vars, messages, "User custom prompt");
     const systemContents = result.filter((m) => m.role === "system").map((m) => m.content as string);
-    const subagentIdx = systemContents.indexOf("Subagent guide");
-    const userIdx = systemContents.indexOf("User custom prompt");
-    expect(subagentIdx).toBeGreaterThan(-1);
-    expect(userIdx).toBeGreaterThan(subagentIdx);
+    // No delegation guide in any system message; it now lives in the
+    // runtime_context JSON snapshot instead.
+    expect(systemContents).not.toContain("Subagent delegation guide");
+    expect(systemContents).not.toContain("Subagent guide");
+    // User prompt still there.
+    expect(systemContents).toContain("User custom prompt");
   });
 });

@@ -178,4 +178,36 @@ describe("execSubagent", () => {
     expect(result).toMatchObject({ ok: true, providerId: "gemini" });
     expect(run.mock.calls[0]![0].providerId).toBe("gemini");
   });
+
+  it("cancels the live ACP run when the background handle is killed", async () => {
+    type RunResult = Awaited<ReturnType<SubagentPort["run"]>>;
+    let resolveRun!: (result: RunResult) => void;
+    const run = vi.fn((_request: Parameters<SubagentPort["run"]>[0]) => new Promise<RunResult>((resolve) => {
+      resolveRun = resolve;
+    }));
+    const cancel = vi.fn(async () => undefined);
+    const port: SubagentPort = {
+      resolve: async () => ({
+        tryOrder: ["cursor"],
+        candidates: new Map([[
+          "cursor",
+          { providerId: "cursor", descriptor: { providerId: "cursor", command: "cursor-agent", args: [] } },
+        ]]),
+      }),
+      run,
+      cancel,
+      getRoutingInfo: async () => null,
+    };
+    const controller = new AbortController();
+    const pending = execSubagent(port, { prompt: "keep working" }, "turn-1", "/tmp", undefined, undefined, undefined, controller.signal);
+
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    controller.abort();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    const request = run.mock.calls[0]![0]!;
+    expect(cancel).toHaveBeenCalledWith(request.runId, request.conversationId);
+
+    resolveRun({ ok: false, providerId: "cursor", summary: "", });
+    await pending;
+  });
 });

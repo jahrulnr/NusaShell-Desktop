@@ -63,6 +63,10 @@ export class GatewayRouteStore {
     this.conversationRoutes.delete(conversationId);
   }
 
+  setWorkspace(turnId: string, workspace: string | undefined): void {
+    this.turnWorkspace.set(turnId, workspace);
+  }
+
   endTurn(turnId: string): void {
     this.turnRoutes.delete(turnId);
     this.activeCalls.delete(turnId);

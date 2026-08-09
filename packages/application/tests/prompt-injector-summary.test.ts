@@ -19,7 +19,6 @@ describe("injectPrompts summary (structural)", () => {
     const { summary } = injectPrompts([], baseVars, []);
     expect(summary.totalSystemMessages).toBe(0);
     expect(summary.totalSystemChars).toBe(0);
-    expect(summary.hasSubagentPrompt).toBe(false);
     expect(summary.hasMemory).toBe(false);
     expect(summary.hasUserPrompt).toBe(false);
     expect(summary.subagentVars).toEqual({ availableSubagents: false, defaultSubagent: false });
@@ -31,24 +30,19 @@ describe("injectPrompts summary (structural)", () => {
     expect(summary.totalSystemChars).toBe("You are the agent.".length + "Use tool_list.".length);
   });
 
-  it("detects subagent prompt from structural flag, not string sniffing", () => {
-    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, "Subagent rules.");
-    expect(summary.hasSubagentPrompt).toBe(true);
-  });
-
-  it("detects subagent vars from PromptVars, not output text", () => {
+  it("reports subagent vars from PromptVars, not output text", () => {
     const vars: PromptVars = {
       ...baseVars,
       availableSubagents: "cursor, gemini",
       defaultSubagent: "gemini",
     };
-    const { summary } = injectPrompts(prompts, vars, [], undefined, undefined, "Subagent rules.");
+    const { summary } = injectPrompts(prompts, vars, []);
     expect(summary.subagentVars.availableSubagents).toBe(true);
     expect(summary.subagentVars.defaultSubagent).toBe(true);
   });
 
   it("reports subagentVars false when vars are empty/undefined", () => {
-    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, "Subagent rules.");
+    const { summary } = injectPrompts(prompts, baseVars, []);
     expect(summary.subagentVars.availableSubagents).toBe(false);
     expect(summary.subagentVars.defaultSubagent).toBe(false);
   });
@@ -64,7 +58,7 @@ describe("injectPrompts summary (structural)", () => {
   });
 
   it("detects skills catalog from structural flag", () => {
-    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, undefined, undefined, "## Available skills\n- `mcp-creator`: authoring.");
+    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, undefined, "## Available skills\n- `mcp-creator`: authoring.");
     expect(summary.hasSkillsCatalog).toBe(true);
   });
 
@@ -80,7 +74,6 @@ describe("injectPrompts summary (structural)", () => {
       [],
       undefined,
       undefined,
-      "Subagent rules.",
       undefined,
       "## Available skills\n- `mcp-creator`: authoring.",
     );
@@ -88,15 +81,13 @@ describe("injectPrompts summary (structural)", () => {
     const hasRuntimeCheckpoint = messages.some((m) => m.role === "user" && String(m.content).startsWith("[NUSASHELL RUNTIME CONTEXT]"));
     expect(hasRuntimeCheckpoint).toBe(false);
     const systemContents = messages.filter((m) => m.role === "system").map((m) => m.content as string);
-    const mcpToolsIdx = systemContents.findIndex((c) => c === "Use tool_list.");
-    const subagentIdx = systemContents.findIndex((c) => c === "Subagent rules.");
-    expect(mcpToolsIdx).toBeLessThan(subagentIdx);
+    expect(systemContents).toEqual(["You are the agent.", "Use tool_list."]);
     // The catalog itself does not leak into the request as a user message.
     expect(messages.some((m) => m.role === "user" && String(m.content).includes("## Available skills"))).toBe(false);
   });
 
   it("includes hasSkillsCatalog in the debug line", () => {
-    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, undefined, undefined, "## Available skills");
+    const { summary } = injectPrompts(prompts, baseVars, [], undefined, undefined, undefined, "## Available skills");
     const line = summary.toDebugLine("trace-xyz");
     expect(line).toContain("hasSkillsCatalog=true");
   });
@@ -107,10 +98,9 @@ describe("injectPrompts summary (structural)", () => {
       availableSubagents: "gemini",
       defaultSubagent: "gemini",
     };
-    const { summary } = injectPrompts(prompts, vars, [], "Be concise.", "MEMORY (notes)", "Subagent rules.");
+    const { summary } = injectPrompts(prompts, vars, [], "Be concise.", "MEMORY (notes)");
     const line = summary.toDebugLine("trace-abc");
     expect(line).toContain("traceId=trace-abc");
-    expect(line).toContain("hasSubagent=true");
     expect(line).toContain("hasMemory=true");
     expect(line).toContain("hasUserPrompt=true");
     expect(line).toContain("subagentVars.available=true");

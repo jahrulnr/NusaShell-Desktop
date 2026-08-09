@@ -33,6 +33,9 @@ describe("OpenAiCompatibleAgentProvider", () => {
     });
 
     expect(fetchFn).toHaveBeenCalledWith("https://api.openai.com/v1/responses", expect.anything());
+    expect(fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "user-agent": "NusaShell",
+    });
     expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toMatchObject({
       model: "gpt-5",
       reasoning: { effort: "high" },
@@ -189,6 +192,35 @@ describe("OpenAiCompatibleAgentProvider", () => {
     });
 
     expect(fetchFn.mock.calls[0]?.[1]?.headers).not.toHaveProperty("authorization");
+    expect(fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({ "user-agent": "NusaShell" });
+  });
+
+  it("attributes only direct OpenRouter requests without leaking router headers to custom endpoints", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      model: "model",
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const provider = new OpenAiCompatibleAgentProvider({
+      id: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "secret-key",
+      fetchFn,
+    });
+
+    await provider.complete({
+      traceId: "trace-openrouter-attribution",
+      round: 1,
+      messages: [{ role: "user", content: "Hello" }],
+      tools: [],
+      model: "model",
+    });
+
+    expect(fetchFn.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "user-agent": "NusaShell",
+      "http-referer": "https://github.com/jahrulnr/NusaShell",
+      "x-openrouter-title": "NusaShell",
+      "x-openrouter-categories": "personal-agent,programming-app",
+    });
   });
 
   it("omits reasoning effort when the picker uses automatic mode", async () => {

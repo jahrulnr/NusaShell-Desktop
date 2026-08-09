@@ -46,6 +46,7 @@ export interface IpcContext {
   readonly backgroundReviewScheduler: BootstrapResult["container"]["backgroundReviewScheduler"];
   readonly learningGraph: BootstrapResult["container"]["learningGraph"];
   readonly agentToolGateway: BootstrapResult["container"]["agentToolGateway"];
+  updateAgentWorkspace(conversationId: string, workspace: string | undefined): boolean;
   readonly conversationTodos?: BootstrapResult["container"]["conversationTodos"];
   configureBackgroundReview: BootstrapResult["container"]["configureBackgroundReview"];
   configureCurator: BootstrapResult["container"]["configureCurator"];

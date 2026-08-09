@@ -22,6 +22,10 @@
       </form>
 
       <div class="topbar-actions">
+        <button class="icon-button" id="upload-button" type="button" aria-label="Upload files from this computer" title="Upload files">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"></path></svg>
+        </button>
+        <input class="sr-only" id="upload-input" type="file" multiple>
         <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh directory" title="Refresh directory">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6v5h-5"></path><path d="M19 11a7 7 0 1 0 1 5"></path></svg>
         </button>
@@ -75,6 +79,11 @@
           <div class="modal-actions"><button class="secondary-button" id="modal-cancel-button" type="button">Cancel</button><button class="primary-button" id="modal-save-button" type="submit">Save</button></div>
         </form>
       </section>
+    </div>
+    <div class="files-drop-overlay" id="files-drop-overlay" hidden aria-hidden="true">
+      <span class="files-drop-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M12 3v11m0 0-4-4m4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <strong class="files-drop-label" data-drop-label>Drop to upload</strong>
+      <span class="files-drop-hint">Files land in the current folder</span>
     </div>
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
   </div>

@@ -20,6 +20,8 @@ import {
   ReadResourceHandler,
   RunAgentTurnHandler,
   CancelAgentTurnHandler,
+  SteerAgentTurnHandler,
+  CancelAgentSteerHandler,
   AnswerAskQuestionHandler,
   ManageTodosHandler,
   KillToolJobHandler,
@@ -51,6 +53,8 @@ import {
   ProbeAcpProviderHandler,
   ImportAcpModelsHandler,
   GetAcpSessionInfoHandler,
+  TelemetryGetReportHandler,
+  RecordSteeringHandler,
   SystemPingHandler,
   SystemVersionHandler,
   ConfigureAiHandler,
@@ -83,6 +87,7 @@ import type { AcpRuntimeParts } from "./acp-runtime.js";
 export interface BusParts {
   readonly commandBus: CommandBus;
   readonly queryBus: QueryBus;
+  readonly updateAgentWorkspace: (conversationId: string, workspace: string | undefined) => boolean;
 }
 
 export function registerBuses(
@@ -132,7 +137,7 @@ export function registerBuses(
       : {}),
     ...(agent.telemetry ? { telemetry: agent.telemetry } : {}),
   };
-  commandBus.register("run-agent-turn", new RunAgentTurnHandler(
+  const runAgentTurnHandler = new RunAgentTurnHandler(
     agent.agentProviderRegistry,
     agent.agentToolGateway,
     options.ai?.providerId || (options.ai?.stubEnabled ? "stub" : ""),
@@ -185,7 +190,10 @@ export function registerBuses(
     agent.conversationTodos,
     skills.skillRegistry,
     Object.keys(runAgentTurnHooks).length > 0 ? runAgentTurnHooks : undefined,
-  ));
+  );
+  commandBus.register("run-agent-turn", runAgentTurnHandler);
+  commandBus.register("steer-agent-turn", new SteerAgentTurnHandler(runAgentTurnHandler));
+  commandBus.register("cancel-agent-steer", new CancelAgentSteerHandler(runAgentTurnHandler));
   commandBus.register("cancel-agent-turn", new CancelAgentTurnHandler(
     agent.agentTurnCoordinator,
     (traceId) => { void eventDispatcher.publish(agent.withStreamSeq(createAgentCancelRequestedEvent(traceId))); },
@@ -257,9 +265,13 @@ export function registerBuses(
     queryBus.register("list-pipeline-runs", new ListPipelineRunsHandler(jobs.pipelineStore));
     queryBus.register("get-pipeline-run", new GetPipelineRunHandler(jobs.pipelineStore));
   }
+  if (agent.telemetry) {
+    commandBus.register("telemetry.record-steering", new RecordSteeringHandler(agent.telemetry));
+  }
   queryBus.register("get-acp-session-info", new GetAcpSessionInfoHandler(acp.acpSessionService));
+  queryBus.register("telemetry.get-report", new TelemetryGetReportHandler(agent.telemetryQuery));
   queryBus.register("get-active-turn", new GetActiveTurnHandler(agent.activeTurns));
   queryBus.register("tool-job-list", new ToolJobListHandler(agent.asyncToolRuntime));
 
-  return { commandBus, queryBus };
+  return { commandBus, queryBus, updateAgentWorkspace: (conversationId, workspace) => runAgentTurnHandler.updateWorkspace(conversationId, workspace) };
 }

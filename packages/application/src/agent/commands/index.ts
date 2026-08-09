@@ -11,3 +11,5 @@ export type { ManageTodosCommand } from "./manage-todos/manage-todos.command.js"
 export { ManageTodosHandler, type ManageTodosResult } from "./manage-todos/manage-todos.handler.js";
 export type { KillToolJobCommand } from "./kill-tool-job/kill-tool-job.command.js";
 export { KillToolJobHandler } from "./kill-tool-job/kill-tool-job.handler.js";
+export type { SteerAgentTurnCommand, CancelAgentSteerCommand } from "./steer-agent-turn/steer-agent-turn.command.js";
+export { SteerAgentTurnHandler, CancelAgentSteerHandler, type AgentSteerResult } from "./steer-agent-turn/steer-agent-turn.handler.js";

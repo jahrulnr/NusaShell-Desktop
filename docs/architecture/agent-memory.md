@@ -62,10 +62,11 @@ limit throw an error.
 
 At the start of each agent turn, `RunAgentTurnHandler` loads a memory
 snapshot via `MemoryStorePort`, formats it with `formatMemoryPrompt`, and
-places it in the ephemeral read-only runtime hydration transcript. The snapshot
-is **frozen for the turn** — the agent sees the entries that existed when the
-turn started, not live mutations—and it is never persisted into conversation
-history or the cache-stable system prefix.
+places it in the hidden read-only runtime hydration transcript. The snapshot
+is **frozen at its hydration boundary** and replayed on later provider turns.
+The latest complete graph is persisted in a hidden conversation sidecar, never
+in visible conversation history or the cache-stable system prefix. A new
+hydration boundary replaces it with a fresh memory snapshot.
 
 When both targets are empty, no memory block is injected.
 

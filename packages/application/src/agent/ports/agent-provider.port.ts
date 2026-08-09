@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "@nusashell/domain";
+
 export type AgentContentPart =
   | { readonly type: "text"; readonly text: string }
   | {
@@ -40,7 +42,9 @@ export type AgentMessage =
       readonly toolIsError?: boolean;
     };
 
-export type ReasoningEffort = "auto" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+// Moved to @nusashell/domain (ticket #82, Klaster C); re-exported here so
+// existing application imports keep resolving.
+export type { ReasoningEffort };
 
 export interface AgentToolCall {
   readonly id: string;

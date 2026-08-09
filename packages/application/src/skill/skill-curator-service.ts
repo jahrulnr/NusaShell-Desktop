@@ -3,20 +3,15 @@ import { latestActivityAt } from "./index.js";
 import type { EventDispatcher } from "../events/event-dispatcher.js";
 import { createLearningUpdatedEvent } from "../events/agent-learning-updated.event.js";
 import type { LoggerPort } from "../plugin/ports/logger.port.js";
+// Curator settings + state machine are domain-owned (ticket #84, Klaster E).
+import {
+  decideSkillState,
+  DEFAULT_CURATOR_SETTINGS,
+  type CuratorSettings,
+} from "@nusashell/domain";
 
-export interface CuratorSettings {
-  readonly enabled: boolean;
-  readonly staleAfterDays: number;
-  readonly archiveAfterDays: number;
-  readonly pruneUserOwned: boolean;
-}
-
-export const DEFAULT_CURATOR_SETTINGS: CuratorSettings = {
-  enabled: true,
-  staleAfterDays: 30,
-  archiveAfterDays: 90,
-  pruneUserOwned: false,
-};
+export { DEFAULT_CURATOR_SETTINGS } from "@nusashell/domain";
+export type { CuratorSettings } from "@nusashell/domain";
 
 export interface CuratorChange {
   readonly skillId: string;
@@ -87,14 +82,13 @@ export class SkillCuratorService {
     const lastActivity = new Date(latestActivityAt(usage));
     const daysSinceActivity = (now.getTime() - lastActivity.getTime()) / MS_PER_DAY;
 
-    let nextState: SkillState | null = null;
-    if (currentState === "active" && daysSinceActivity >= this.settings.staleAfterDays) {
-      nextState = "stale";
-    } else if (currentState === "stale" && daysSinceActivity >= this.settings.archiveAfterDays) {
-      nextState = "archived";
-    } else if (currentState === "active" && daysSinceActivity >= this.settings.archiveAfterDays) {
-      nextState = "archived";
-    }
+    const nextState = decideSkillState({
+      currentState,
+      daysSinceActivity,
+      pinned: usage.pinned,
+      origin,
+      settings: this.settings,
+    });
 
     if (!nextState || nextState === currentState) return null;
 

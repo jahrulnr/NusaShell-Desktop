@@ -4,6 +4,7 @@ export {
   type RunAgentTurnInput,
   type AgentTurnResult,
   type AgentTurnPartial,
+  type AgentSteerBoundary,
   type AgentCompactionCheckpoint,
   type AgentContextOptions,
   type AgentToolExecution,

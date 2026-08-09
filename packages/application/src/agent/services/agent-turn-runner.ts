@@ -34,6 +34,7 @@ export type {
   AgentTurnResult,
   AgentCompactionCheckpoint,
   AgentTurnPartial,
+  AgentSteerBoundary,
   AgentContextOptions,
   AgentTurnRunnerDeps,
 } from "./agent-turn-types.js";
@@ -103,8 +104,13 @@ export class AgentTurnRunner {
     let api: "chat" | "responses" | "messages" | undefined;
     let reasoning: string | undefined;
     const steps: AgentTurnStep[] = [];
+    const steerBoundaries: import("./agent-turn-types.js").AgentSteerBoundary[] = [];
     let emptyResponseNudged = false;
     let softRecoverUsed = 0;
+    // A runtime inbox update accepted after a provider sample or live tool
+    // batch needs one fresh provider sample even when the original round
+    // budget has just been exhausted. Ordinary tool-loop limits stay firm.
+    let runtimeUpdateRoundExtensions = 0;
     // Live-streamed text/reasoning buffers. Reset when a provider.complete
     // attempt succeeds (full response accepted). On mid-stream failure, these
     // carry already-painted paragraphs into buildTurnPartial so the UI/seal
@@ -119,6 +125,16 @@ export class AgentTurnRunner {
         ...(hasUsage(usage) ? { usage: { ...usage } } : {}),
       });
     };
+    const appendRuntimeUpdate = (runtimeUpdate: readonly AgentMessage[] | undefined): boolean => {
+      if (!runtimeUpdate?.length) return false;
+      const userMessages = runtimeUpdate.filter((message): message is Extract<AgentMessage, { role: "user" }> => message.role === "user");
+      if (userMessages.length > 0) {
+        steerBoundaries.push({ stepOffset: steps.length, toolCallOffset: toolCalls.length, userMessages });
+      }
+      messages.push(...runtimeUpdate);
+      publishContext();
+      return true;
+    };
     publishContext();
 
     // Tracks the in-flight provider/tool round so mid-turn failures (allowlist,
@@ -126,9 +142,11 @@ export class AgentTurnRunner {
     let activeRound = 0;
     const roundsUnlimited = maxToolRounds === 0;
     try {
-      for (let round = 1; roundsUnlimited || round <= maxToolRounds; round += 1) {
+      for (let round = 1; roundsUnlimited || round <= maxToolRounds + runtimeUpdateRoundExtensions; round += 1) {
         activeRound = round;
         assertTurnActive(input.signal, traceId);
+        const runtimeUpdate = await input.consumeRuntimeUpdate?.();
+        const hasRuntimeUpdate = appendRuntimeUpdate(runtimeUpdate);
         const tools = await this.deps.toolGateway.listTools(input.pluginIds, traceId);
         assertTurnActive(input.signal, traceId);
         const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -136,6 +154,36 @@ export class AgentTurnRunner {
         // mid-turn memento runs after tools settle so FC/FCO pairs are never
         // half-open across a compact boundary.
         this.compactor.shrink(messages, input.modelCapabilities, input.model);
+        // Runtime updates (including a late steer/workspace hydration) can
+        // add enough context after the previous safe boundary to cross the
+        // compaction threshold. Do not send another provider request with an
+        // over-budget payload just because the update arrived between rounds.
+        // The old path only shrank here and waited for the next tool result,
+        // allowing a model to continue on stale/over-limit context.
+        if (hasRuntimeUpdate && this.compactor.isOverBudget(messages, input.modelCapabilities, input.model)) {
+          const preSample = await this.compactor.compact(
+            {
+              ...input,
+              messages,
+            },
+            traceId,
+          );
+          if (preSample.checkpoint) {
+            messages.splice(0, messages.length, ...preSample.messages);
+            compactionCheckpoint = preSample.checkpoint;
+            this.deps.logger?.info(
+              "Agent pre-sample compaction traceId=%s round=%d via=%s retainedUsers=%d",
+              traceId,
+              round,
+              preSample.checkpoint.via,
+              preSample.checkpoint.retainedUserMessages?.length ?? 0,
+            );
+          } else {
+            // Defensive fallback for a disabled/no-op compactor.
+            this.compactor.shrink(messages, input.modelCapabilities, input.model);
+          }
+          publishContext();
+        }
         let response;
         let streamedReasoning = "";
         for (;;) {
@@ -179,7 +227,7 @@ export class AgentTurnRunner {
                 cancelDetails.partial = buildTurnPartial(
                   traceId, round - 1, toolCalls, steps, messages,
                   model, providerId, api, reasoning, usage,
-                  liveText, liveReasoning,
+                  liveText, liveReasoning, steerBoundaries,
                 );
               }
               throw new ApplicationError("AGENT_TURN_CANCELLED", "Agent turn cancelled", cancelDetails);
@@ -216,7 +264,7 @@ export class AgentTurnRunner {
               details.partial = buildTurnPartial(
                 traceId, round - 1, toolCalls, steps, messages,
                 model, providerId, api, reasoning, usage,
-                liveText, liveReasoning,
+                liveText, liveReasoning, steerBoundaries,
               );
             }
             throw new ApplicationError("AGENT_PROVIDER_FAILED", `AI provider request failed: ${cause}`, details);
@@ -269,9 +317,26 @@ export class AgentTurnRunner {
             }
             text = "(empty model response)";
           }
-          this.deps.logger?.info("Agent turn completed traceId=%s provider=%s rounds=%d", traceId, this.deps.provider.id, round);
           steps.push({ type: "text", content: text, ...(stepModel ? { model: stepModel } : {}), ...(stepProviderId ? { providerId: stepProviderId } : {}) });
           input.onStepsChanged?.(steps);
+          // A steer may arrive while the provider is producing what would
+          // otherwise be its terminal sample. Treat that completed sample as
+          // an assistant segment, then apply the steer at this safe boundary
+          // and continue under the same trace instead of closing the turn.
+          const terminalBoundaryUpdate = await input.consumeRuntimeUpdate?.();
+          if (terminalBoundaryUpdate?.length) {
+            messages.push(
+              {
+                role: "assistant",
+                content: text,
+                ...(responseReasoning ? { reasoning: responseReasoning } : {}),
+              },
+            );
+            appendRuntimeUpdate(terminalBoundaryUpdate);
+            if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
+            continue;
+          }
+          this.deps.logger?.info("Agent turn completed traceId=%s provider=%s rounds=%d", traceId, this.deps.provider.id, round);
           return {
             traceId,
             text,
@@ -279,13 +344,43 @@ export class AgentTurnRunner {
             toolCalls,
             steps,
             messages,
+            ...(input.model ? { requestedModel: input.model } : {}),
             ...(model ? { model } : {}),
             ...(providerId ? { providerId } : {}),
             ...(api ? { api } : {}),
             ...(reasoning ? { reasoning } : {}),
             ...(hasUsage(usage) ? { usage } : {}),
             ...(compactionCheckpoint ? { compaction: compactionCheckpoint } : {}),
+            ...(steerBoundaries.length ? { steerBoundaries: [...steerBoundaries] } : {}),
           };
+        }
+
+        // Inbox boundary 1: a steer queued while the provider was reasoning
+        // must be observed before executing tool calls proposed under the old
+        // direction. Preserve any user-facing text/reasoning as a completed
+        // assistant segment, discard the not-yet-started calls, then resample.
+        if (response.text?.trim()) {
+          steps.push({ type: "text", content: response.text.trim(), ...(stepModel ? { model: stepModel } : {}), ...(stepProviderId ? { providerId: stepProviderId } : {}) });
+          input.onStepsChanged?.(steps);
+        }
+        const providerBoundaryUpdate = await input.consumeRuntimeUpdate?.();
+        if (providerBoundaryUpdate?.length) {
+          if (response.text?.trim()) {
+            messages.push({
+              role: "assistant",
+              content: response.text.trim(),
+              ...(responseReasoning ? { reasoning: responseReasoning } : {}),
+            });
+          }
+          appendRuntimeUpdate(providerBoundaryUpdate);
+          if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
+          this.deps.logger?.info(
+            "Agent runtime inbox applied after provider sample traceId=%s round=%d discardedToolCalls=%d",
+            traceId,
+            round,
+            requestedCalls.length,
+          );
+          continue;
         }
 
         const duplicate = repeatedToolDecision(requestedCalls, repeatedCalls, this.defaultMaxRepeatedToolCalls);
@@ -298,12 +393,14 @@ export class AgentTurnRunner {
             toolCalls,
             steps,
             messages,
+            ...(input.model ? { requestedModel: input.model } : {}),
             ...(model ? { model } : {}),
             ...(providerId ? { providerId } : {}),
             ...(api ? { api } : {}),
             ...(reasoning ? { reasoning } : {}),
             ...(hasUsage(usage) ? { usage } : {}),
             ...(compactionCheckpoint ? { compaction: compactionCheckpoint } : {}),
+            ...(steerBoundaries.length ? { steerBoundaries: [...steerBoundaries] } : {}),
           };
         }
         if (duplicate === "nudge") {
@@ -318,12 +415,6 @@ export class AgentTurnRunner {
           continue;
         }
         messages.push({ role: "assistant", ...(response.text ? { content: response.text } : {}), ...(responseReasoning ? { reasoning: responseReasoning } : {}), toolCalls: requestedCalls });
-        // Keep provider order for the round: reasoning (already pushed) → text → tools.
-        // Streaming UIs also append by delta arrival; do not reorder text after tools.
-        if (response.text?.trim()) {
-          steps.push({ type: "text", content: response.text.trim(), ...(stepModel ? { model: stepModel } : {}), ...(stepProviderId ? { providerId: stepProviderId } : {}) });
-          input.onStepsChanged?.(steps);
-        }
         publishContext();
 
         const roundExecutions: AgentToolExecution[] = [];
@@ -373,6 +464,20 @@ export class AgentTurnRunner {
           steps.push({ type: "tool_calls", calls: [...roundExecutions], ...(stepModel ? { model: stepModel } : {}), ...(stepProviderId ? { providerId: stepProviderId } : {}) });
           input.onStepsChanged?.(steps);
         }
+        // Inbox boundary 2: calls that were already live are allowed to
+        // settle. Apply the queued steer immediately afterwards, before the
+        // next provider sample, and extend the sample budget when necessary.
+        const toolBoundaryUpdate = await input.consumeRuntimeUpdate?.();
+        if (toolBoundaryUpdate?.length) {
+          appendRuntimeUpdate(toolBoundaryUpdate);
+          if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
+          this.deps.logger?.info(
+            "Agent runtime inbox applied after live tools traceId=%s round=%d tools=%d",
+            traceId,
+            round,
+            roundExecutions.length,
+          );
+        }
       }
 
       // When unlimited (maxToolRounds === 0) the for-loop never falls through
@@ -396,6 +501,9 @@ export class AgentTurnRunner {
               api,
               reasoning,
               usage,
+              undefined,
+              undefined,
+              steerBoundaries,
             ),
           },
         );
@@ -421,6 +529,9 @@ export class AgentTurnRunner {
             api,
             reasoning,
             usage,
+            undefined,
+            undefined,
+            steerBoundaries,
           ),
         },
       );
@@ -445,6 +556,7 @@ export class AgentTurnRunner {
           usage,
           liveText,
           liveReasoning,
+          steerBoundaries,
         ),
       );
     }

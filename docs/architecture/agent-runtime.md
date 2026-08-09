@@ -426,20 +426,26 @@ the visible compaction marker to that immutable boundary; the legacy
 rooms, but array indexes no longer decide where the marker appears.
 
 `formatMessagesForSummary` **excludes injected system prompts** (`system.md` /
-`mcp-tools`). The runtime snapshot is an ephemeral synthetic tool transcript,
-never durable conversation history or summary input. Only prior summary markers, user, assistant, and tool
+`mcp-tools`). The runtime snapshot is a hidden synthetic tool transcript,
+persisted separately from visible conversation history and excluded from summary input. Only prior summary markers, user, assistant, and ordinary tool
 messages enter the handoff excerpt — otherwise a ~12k summary budget is
 exhausted by setup text and the checkpoint LLM invents a "fresh session / no
 user request" handoff (observed after max-round "lanjut" on fat tool turns).
 
 ### Runtime hydration (full running catalog)
 
-On a fresh room and after compaction, `RuntimeHydrationBuilder` creates one
-ephemeral synthetic tool transcript: `runtime_context`, `memory`, `skill_list`,
-`mcp_list`, and `tool_list`. The last two carry the runtime-authoritative
+When a room has no hydration checkpoint and after compaction,
+`RuntimeHydrationBuilder` creates one synthetic tool transcript:
+`runtime_context`, `memory` (`action: "list"`), `skill_list`,
+`mcp_list`, `tool_list`, and, when a conversation has open work, `todo_list`.
+`todo_list` is a read-only snapshot of the conversation TODO SoT; it is not a
+model-issued tool call. The MCP slots carry the runtime-authoritative
 running-plugin catalog (tool name, description, and `inputSchema`) without
-placing volatile state in the system prefix. The transcript is never persisted
-into conversation history or summaries.
+placing volatile state in the system prefix. The latest complete graph is
+persisted in `<conversationId>.runtime.json`, not the visible message JSONL,
+and replayed after the first user message on every later provider turn. A new
+workspace or compaction boundary atomically replaces that sidecar. Hydration is
+never rendered as a chat row and never enters compaction summaries.
 
 Running tools are also auto-advertised in provider `tools[]` via `listTools`
 auto-seeding. This array is capped at 96 MCP tool entries beyond shell
@@ -548,16 +554,19 @@ runner. The injection point is the application layer (backend), not the renderer
 | --- | --- | --- |
 | `system.md` | Stable agent identity and cross-cutting operating rules | No |
 | `mcp-tools.md` | Stable progressive tool/disclosure protocol | No |
-| `subagent-delegation.md` | Parent-agent delegation boundary and brief guidance, only when available | Yes |
+| `subagent-delegation.md` | Parent-agent delegation boundary + brief guidance, embedded in `runtime_context.subagents.delegationGuide` snapshot (not injected as a system prompt) | Yes (interpolated at snapshot assembly) |
 | `subagent.md` | ACP subagent execution contract, prepended to each delegated task | No (ACP only) |
 | `compact.md` | Compaction instruction for the checkpoint LLM call | No |
 | `continue.md` | Outer auto-continue steering: pursue open CURRENT TASKS | No |
 
 `system.md` and `mcp-tools.md` are the whole cache-stable system prefix.
 Runtime facts (date, environment, OS, workspace, memory, skills, MCP catalog,
-and TODO state) arrive as an ephemeral read-only hydration transcript after the
-durable user history, not as a dynamic developer prompt. `subagent-delegation.md`
-is added only when that tool is available. `subagent.md` is loaded separately
+TODO state, and subagent routing) arrive as a hidden read-only hydration
+transcript after the durable user history, not as a dynamic developer prompt.
+`subagent-delegation.md` is loaded separately (only when the `subagent` tool is
+available) and placed into the `runtime_context.subagents.delegationGuide` JSON
+field, carrying `available`/`default` routing. It is never injected as a system
+message. `subagent.md` is loaded separately
 and prepended only to ACP subagent tasks, never injected into the parent-agent
 turn. Compaction summary messages from prior turns
 are preserved; non-summary system messages from the conversation are dropped to
@@ -628,8 +637,9 @@ calls a `sleep` tool. `async_wait` is a barrier tool (runs alone, like
 ### Cancel scopes
 
 - **Turn cancel ≠ job kill.** Stopping the turn aborts in-turn `async_wait`
-  calls and sync MCP calls, but background handles keep running unless the
-  agent or user kills them.
+  calls and sync MCP calls, but never the handle-owned signal of a background
+  MCP call. Background handles keep running unless the agent or user kills
+  them.
 - **User kill** via the job card Stop button calls `agent.tool_job_kill`, which
   soft-cancels the handle.
 - **Conversation delete** kills all running handles for that conversation
@@ -674,6 +684,10 @@ completes. The handle is still useful for detach + `async_wait`.
 2. **Settles the handle as `killed`** — the runtime marks the handle and
    publishes `agent.tool_job_ended` with `reason: "killed"`.
 
+For `subagent(async: true)`, the same handle abort explicitly calls
+`SubagentPort.cancel(runId, conversationId)` before the handle settles. A
+handle cannot merely show `killed` while its ACP session keeps working.
+
 Plugin stop uses `ProcessHandle.killGroup()` (Unix: `process.kill(-pid)`,
 Windows: `taskkill /T /F /PID`) to terminate the MCP server process and all
 its children — so a Terminal plugin that spawned a long-running command gets
@@ -692,10 +706,68 @@ background results without the user having to manually prompt it.
 The `CompletionSteerer` (desktop renderer) subscribes to `tool_job_ended`
 events, debounces 500ms to coalesce multiple completions, checks
 `isConversationRunning(conversationId)`, and calls `submit()` with a formatted
-summary. If the conversation has an active turn, the steer is skipped — the
-agent will see the completed jobs in the job strip on its next natural turn.
+summary. If the conversation has an active turn, an unsent composer draft, or
+IME composition, the completion is retained (not dropped) and retried when the
+room becomes idle. Overflow beyond ten coalesced jobs is delivered in later
+wakes, so every completion remains available to the agent.
 Turn tracking is per-conversation (`pendingTurnConversations` set), so a
 background turn in one room does not block steering or submitting in another.
+
+Every steering decision (fired or skipped) is recorded as a `steering`
+telemetry record via the `telemetry.record_steering` command — metadata-only
+(`triggeredAt`, `jobCount`, `outcome`, and a `reason` when skipped), never the
+steer prompt or job output. It feeds the Usage dashboard.
+
+### User messages while a task is running
+
+The composer implements non-interrupting steering. While a room owns an active
+turn, the user may keep typing and submit one non-empty draft. The renderer
+submits that draft to the active trace without cancelling provider reasoning or
+tool execution. The application keeps one pending steer per room. The runner
+reads that inbox at two explicit safe boundaries: after a provider sample
+finishes reasoning but before any newly proposed tool calls start, or after a
+tool batch that was already live settles. Proposed calls from the superseded
+direction are discarded before execution. If the steer arrived during a
+terminal text sample, that completed sample becomes an assistant segment and
+the same trace continues for another round. This is true same-turn steering,
+not a follow-up turn queue.
+
+The composer moves the submitted draft into a compact steer card immediately.
+It can be cancelled while still queued; after consumption it changes to an
+applied status until the turn settles. Durable replay is segmented as
+`assistant → user steer → assistant`, preserving the exact provider-visible
+ordering across room reloads and future turns. Duplicate sends are disabled
+while one steer is pending.
+
+The explicit Stop action remains distinct: it cancels the active turn and
+invalidates any pending steer for that room, while retaining the steer as an
+editable draft. A pending steer also suppresses automatic TODO continuation so
+the latest human instruction takes priority at the next safe boundary.
+
+At the prompt layer, humans may also type "stop" or "berhenti" as a normal
+message rather than pressing Stop. Because the agent sees user messages,
+completion steering, and auto-continue all as plain `user` messages,
+`system.md` states the priority contract explicitly:
+
+- The **latest user message is an active instruction** — answer questions, weigh
+  suggestions, then continue per open TODOs; never drop the task merely because
+  a message arrived.
+- **Completion-steering notices are information, not instructions** — record the
+  result, update TODOs only when the task changes, and keep working.
+- **Typed "stop"/"berhenti" is a real halt** — stop the turn, mark unfinished
+  TODOs as cancelled (or remove when asked), do not continue.
+- **Scope/priority changes update TODOs** instead of silently dropping state.
+
+The steering summary header was changed to
+`[Background job completed — information only, not a user instruction]` and
+`continue.md` now also honors a typed halt and defers to a newer user message.
+
+This is intentionally prompt-level defense-in-depth, not flow control: the
+same contract will shape any future voice input path (a "stop" spoken by the
+user maps to the same typed-stop semantics without re-architecting the turn
+loop or todo store). The TODO interruption/`interrupted` status remains a
+candidate future enhancement (see telemetry steering reasons), not part of
+this change.
 
 ## Multi-turn auto-continue (Codex-inspired outer loop)
 
@@ -727,11 +799,13 @@ bound or no todo port is configured.
 
 When `autoContinueIndex > 0`, the handler loads `continue.md` via
 `PromptLoaderPort.loadContinuePrompt()` and injects it as an internal `user`
-message before the durable conversation history. The desktop does **not**
+message after the durable conversation history. The desktop does **not**
 append a user row for this message — it exists only in the provider payload
 for that chained request. The prompt instructs the agent to pursue open
 CURRENT TASKS, verify before claiming done, keep the todo list accurate, and
-stop when everything is complete.
+stop when everything is complete. Auto-continue also refreshes the hydration
+checkpoint, so its following `todo_list` result reflects the current TODO SoT
+rather than a prior turn's snapshot.
 
 ### Desktop chain
 
@@ -779,9 +853,12 @@ and can use `async_wait` / `async_peek` / `async_kill` to manage it. This is
 useful for long-running subagent tasks (e.g. "refactor this module while I
 continue working").
 
-### Wait interrupt on user steer (Phase D)
+### Wait interrupt on explicit turn cancellation (Phase D)
 
 `async_wait` races the wait against the turn's abort signal. If the user
-sends a new message (which supersedes the current turn), the wait returns
-immediately with `interrupted: true` and the current status — instead of
-blocking until the timeout. The background handle keeps running.
+presses Stop, or a caller explicitly supersedes/cancels the current turn, the
+wait returns immediately with `interrupted: true` and the current status —
+instead of blocking until the timeout. The background handle keeps running.
+Submitting a composer steer does not abort `async_wait`; the steer remains
+cancellable until that barrier tool returns, then enters the same turn before
+the next provider sample.

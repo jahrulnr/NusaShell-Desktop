@@ -14,6 +14,7 @@ import {
   type AgentTokenUsage,
   type AgentTurnTelemetry,
   type ProviderRequestTelemetry,
+  type SteeringTelemetry,
   type TelemetryPort,
 } from "../src/index.js";
 
@@ -28,11 +29,15 @@ const USAGE: AgentTokenUsage = {
 class RecordingTelemetry implements TelemetryPort {
   readonly requests: ProviderRequestTelemetry[] = [];
   readonly turns: AgentTurnTelemetry[] = [];
+  readonly steerings: SteeringTelemetry[] = [];
   recordProviderRequest(record: ProviderRequestTelemetry): void {
     this.requests.push(record);
   }
   recordTurn(record: AgentTurnTelemetry): void {
     this.turns.push(record);
+  }
+  recordSteering(record: SteeringTelemetry): void {
+    this.steerings.push(record);
   }
 }
 
@@ -154,6 +159,7 @@ describe("TelemetryAgentProvider", () => {
     const throwing: TelemetryPort = {
       recordProviderRequest() { throw new Error("sink down"); },
       recordTurn() { throw new Error("sink down"); },
+      recordSteering() { throw new Error("sink down"); },
     };
     const inner: AgentProvider = { id: "p", async complete() { return { text: "ok" }; } };
     const provider = new TelemetryAgentProvider(inner, throwing);

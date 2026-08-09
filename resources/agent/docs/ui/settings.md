@@ -136,8 +136,23 @@ Sets the model the shell runs by default for scheduled job/pipeline agent turns,
 
 - **Global default model** (`#settings-global-model`):
   - Section: Global model
-  - Type: select
-  - Action: Chooses the shell-wide default model, or Automatic (provider default) to leave it to each provider.
+  - Type: value
+  - Action: Stores the staged shell-wide default model selected from the searchable picker until the form is saved.
+
+- **Choose global model** (`#settings-global-model-trigger`):
+  - Section: Global model
+  - Type: button
+  - Action: Opens the searchable global model picker.
+
+- **Search global models** (`#settings-global-model-search`):
+  - Section: Global model
+  - Type: search
+  - Action: Filters the imported model catalog by model or provider without saving a change.
+
+- **Global model results** (`#settings-global-model-list`):
+  - Section: Global model
+  - Type: listbox
+  - Action: Lists matching models and stages the selected default until Save global model is pressed.
 
 - **Global default effort** (`#settings-global-effort`):
   - Section: Global model

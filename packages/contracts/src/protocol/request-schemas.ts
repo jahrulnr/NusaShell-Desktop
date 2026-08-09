@@ -137,12 +137,14 @@ const AgentContentPartSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const AgentUserMessageSchema = z.object({
+  role: z.literal("user"),
+  content: z.union([z.string().min(1), z.array(AgentContentPartSchema).min(1).max(12)]),
+});
+
 const AgentMessageSchema = z.union([
   z.object({ role: z.literal("system"), content: z.string().min(1) }),
-  z.object({
-    role: z.literal("user"),
-    content: z.union([z.string().min(1), z.array(AgentContentPartSchema).min(1).max(12)]),
-  }),
+  AgentUserMessageSchema,
   z.object({
     role: z.literal("assistant"),
     content: z.string().optional(),
@@ -206,6 +208,32 @@ export const AgentCancelRequestSchema = z.object({
   protocolVersion: z.string().optional(),
   payload: z.object({
     traceId: z.string().min(1).max(128),
+  }),
+});
+
+export const AgentSteerRequestSchema = z.object({
+  kind: z.literal("request"),
+  id: z.string().min(1),
+  method: z.literal("agent.steer"),
+  protocolVersion: z.string().optional(),
+  payload: z.object({
+    conversationId: z.string().min(1).max(128),
+    traceId: z.string().min(1).max(128),
+    steerId: z.string().min(1).max(128),
+    displayText: z.string().min(1).max(10_000),
+    message: AgentUserMessageSchema,
+  }),
+});
+
+export const AgentSteerCancelRequestSchema = z.object({
+  kind: z.literal("request"),
+  id: z.string().min(1),
+  method: z.literal("agent.steer_cancel"),
+  protocolVersion: z.string().optional(),
+  payload: z.object({
+    conversationId: z.string().min(1).max(128),
+    traceId: z.string().min(1).max(128),
+    steerId: z.string().min(1).max(128),
   }),
 });
 
@@ -565,6 +593,30 @@ export const PipelineRunGetRequestSchema = z.object({
   }),
 });
 
+export const TelemetryGetReportRequestSchema = z.object({
+  kind: z.literal("request"),
+  id: z.string().min(1),
+  method: z.literal("telemetry.get_report"),
+  protocolVersion: z.string().optional(),
+  payload: z.object({
+    recentLimit: z.number().int().min(1).max(200).optional(),
+  }),
+});
+
+export const TelemetryRecordSteeringRequestSchema = z.object({
+  kind: z.literal("request"),
+  id: z.string().min(1),
+  method: z.literal("telemetry.record_steering"),
+  protocolVersion: z.string().optional(),
+  payload: z.object({
+    conversationId: z.string().max(128).optional(),
+    triggeredAt: z.string().min(1),
+    jobCount: z.number().int().min(0),
+    outcome: z.enum(["fired", "skipped"]),
+    reason: z.enum(["not-idle", "composer-busy", "other"]).optional(),
+  }),
+});
+
 const AcpContentBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string().min(1) }),
   z.object({
@@ -729,6 +781,8 @@ export const RequestSchema = z.discriminatedUnion("method", [
   ResourceReadRequestSchema,
   AgentRunRequestSchema,
   AgentCancelRequestSchema,
+  AgentSteerRequestSchema,
+  AgentSteerCancelRequestSchema,
   AgentAskAnswerRequestSchema,
   AgentGetActiveTurnRequestSchema,
   AgentTodosSetRequestSchema,
@@ -747,6 +801,8 @@ export const RequestSchema = z.discriminatedUnion("method", [
   JobRemoveRequestSchema,
   JobOutputRequestSchema,
   JobValidateScheduleRequestSchema,
+  TelemetryGetReportRequestSchema,
+  TelemetryRecordSteeringRequestSchema,
   PipelineAddRequestSchema,
   PipelineUpdateRequestSchema,
   PipelineRemoveRequestSchema,
@@ -786,6 +842,8 @@ export type ResourceTemplateListRequest = z.infer<typeof ResourceTemplateListReq
 export type ResourceReadRequest = z.infer<typeof ResourceReadRequestSchema>;
 export type AgentRunRequest = z.infer<typeof AgentRunRequestSchema>;
 export type AgentCancelRequest = z.infer<typeof AgentCancelRequestSchema>;
+export type AgentSteerRequest = z.infer<typeof AgentSteerRequestSchema>;
+export type AgentSteerCancelRequest = z.infer<typeof AgentSteerCancelRequestSchema>;
 export type AgentAskAnswerRequest = z.infer<typeof AgentAskAnswerRequestSchema>;
 export type AgentGetActiveTurnRequest = z.infer<typeof AgentGetActiveTurnRequestSchema>;
 export type AgentTodosSetRequest = z.infer<typeof AgentTodosSetRequestSchema>;

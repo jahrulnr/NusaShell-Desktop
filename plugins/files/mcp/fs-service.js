@@ -212,11 +212,15 @@ export class FileService {
    * Atomic write: write to a temp file then rename. Prevents partial writes
    * from corrupting the target on crash.
    * @param {string} filePath
-   * @param {string} content
+   * @param {string | Buffer} content
    */
   async _atomicWrite(filePath, content) {
     const tmp = `${filePath}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-    await fs.writeFile(tmp, content, "utf8");
+    if (Buffer.isBuffer(content)) {
+      await fs.writeFile(tmp, content);
+    } else {
+      await fs.writeFile(tmp, content, "utf8");
+    }
     await fs.rename(tmp, filePath);
   }
 
@@ -387,11 +391,15 @@ export class FileService {
   /**
    * @param {string} input
    * @param {string} content
+   * @param {{ encoding?: "utf8" | "base64" }} [options] When encoding is
+   *   "base64", content is decoded to a Buffer before writing so binary
+   *   uploads survive byte-for-byte (used by the Files UI upload/drop path).
    */
-  async writeFile(input, content) {
+  async writeFile(input, content, options = {}) {
     const filePath = resolvePath(this.root, input);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await this._atomicWrite(filePath, content);
+    const payload = options.encoding === "base64" ? Buffer.from(content, "base64") : content;
+    await this._atomicWrite(filePath, payload);
     return { path: relativePosix(this.root, filePath, path.basename(filePath)), written: true };
   }
 

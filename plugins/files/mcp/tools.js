@@ -53,7 +53,7 @@ const schemas = {
   list: z.object({ path: rootPath }).strict(),
   tree: z.object({ path: rootPath, depth, exclude: excludeGlobs, includeFiles: z.boolean().default(true) }).strict(),
   read: z.object({ path: filePath, head, tail, start: startLine, end: endLine, lineNumbers, maxBytes }).strict(),
-  write: z.object({ path: filePath, content: z.string().max(10 * 1024 * 1024) }).strict(),
+  write: z.object({ path: filePath, content: z.string().max(10 * 1024 * 1024), encoding: z.enum(["utf8", "base64"]).default("utf8") }).strict(),
   mkdir: z.object({ path: filePath }).strict(),
   move: z.object({ source: filePath, destination: filePath }).strict(),
   copy: z.object({ source: filePath, destination: filePath }).strict(),
@@ -125,7 +125,8 @@ export const FILES_TOOLS = Object.freeze([
   }, ["path"]),
   descriptor("write", "Create or overwrite a file. Parent directories are created automatically.", {
     path: stringProperty("File path relative to the files plugin root (user home by default)."),
-    content: { type: "string", description: "File content (UTF-8 text, max 10 MB)." },
+    content: { type: "string", description: "File content (UTF-8 text, max 10 MB). When encoding is base64, the Base64-encoded bytes to decode." },
+    encoding: { type: "string", enum: ["utf8", "base64"], description: "How to interpret content (default utf8). Use base64 for binary uploads.", default: "utf8" },
   }, ["path", "content"], false),
   descriptor("mkdir", "Create an empty directory. Missing parent directories are created automatically.", {
     path: stringProperty("Directory path relative to the files plugin root (user home by default)."),
@@ -256,7 +257,7 @@ export async function callFilesTool(service, name, rawArguments = {}, contextEng
         maxBytes: input.maxBytes,
       })) };
     case "write":
-      return await service.writeFile(input.path, input.content);
+      return await service.writeFile(input.path, input.content, { encoding: input.encoding });
     case "mkdir":
       return await service.makeDir(input.path);
     case "move":

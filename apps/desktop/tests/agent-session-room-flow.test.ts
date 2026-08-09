@@ -243,6 +243,23 @@ describe("BH-AGENT room / turn / drawer suite", () => {
     expect(stop.hidden).toBe(true);
   });
 
+  it("BH-AGENT-01a keeps the active agent room draftable and enables Send for steering", () => {
+    const { controller } = makeController();
+    const input = document.querySelector<HTMLInputElement>("#agent-input")!;
+    const send = document.querySelector<HTMLButtonElement>("#agent-send-btn")!;
+    controller.conversation = room("room-a") as never;
+    controller.activeId = "room-a";
+    controller.markTurnRunning("room-a");
+    controller.activeTraceIds.set("room-a", "trace-running");
+
+    controller.resetComposerForConversation("room-a");
+    input.value = "change the priority";
+    controller.updateSendAvailability();
+
+    expect(input.disabled).toBe(false);
+    expect(send.disabled).toBe(false);
+  });
+
   it("BH-AGENT-15 allows submit in room B while room A owns a running turn", async () => {
     const rooms = new Map([
       ["room-a", room("room-a", { messages: [{ role: "user", content: "hi A" }] })],
@@ -338,10 +355,13 @@ describe("BH-AGENT room / turn / drawer suite", () => {
     const { controller } = makeController({ getActiveTurn });
     controller.pendingTurnConversations.clear();
     await controller.open("room-a");
+    controller.turnOwnerConversationId = "room-b";
+    controller.activeTraceIds.set("room-b", "trace-b");
     await controller.restoreActiveTurnUi();
 
     expect(controller.turnPending).toBe(true);
     expect(controller.activeTraceId).toBe("trace-a");
+    expect(controller.activeTraceIds.get("room-b")).toBe("trace-b");
     expect(document.querySelector("#agent-stop-btn")?.hidden).toBe(false);
 
     const host = document.querySelector("#agent-thread article.agent-message.agent-pending");

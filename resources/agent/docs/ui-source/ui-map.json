@@ -51,12 +51,21 @@
             "open-docs",
             "sidebar-mode-toggle"
           ]
+        },
+        {
+          "heading": "File drop",
+          "paragraphs": [
+            "Dragging files from the OS over the shell shows a full-window drop overlay instead of Chromium's default navigate/error. In the Agent view the dropped files are attached to the composer; in any other view the drop is rejected with a toast. Folders are not attachable in the shell and are directed to the Files plugin."
+          ],
+          "controls": [
+            "shell-drop-overlay"
+          ]
         }
       ]
     },
     "home": {
       "title": "Home (Launcher)",
-      "purpose": "The default view and app launcher. Shows windowed (UI) plugins as a searchable grid of app tiles. Headless MCP-only plugins do not appear here \u2014 manage them from the Plugins view.",
+      "purpose": "The default view and app launcher. Shows windowed (UI) plugins as a searchable grid of app tiles. Headless MCP-only plugins do not appear here — manage them from the Plugins view.",
       "howToOpen": "Open NusaShell, or click the Home item in the left sidebar.",
       "sections": [
         {
@@ -177,7 +186,7 @@
         {
           "heading": "Conversation list",
           "paragraphs": [
-            "A fixed workbench rail listing local conversation threads. Click a thread to open it; use the \u00d7 button to delete. At narrow widths the rail becomes a focusable Rooms drawer opened from the compact Agent toolbar, so room switching remains available without consuming chat width."
+            "A fixed workbench rail listing local conversation threads. Click a thread to open it; use the × button to delete. At narrow widths the rail becomes a focusable Rooms drawer opened from the compact Agent toolbar, so room switching remains available without consuming chat width."
           ],
           "controls": [
             "agent-conversations-title",
@@ -193,7 +202,7 @@
         {
           "heading": "Conversation thread",
           "paragraphs": [
-            "The full-height message runway separates compact user cards from editorial assistant responses. User attachments render as image previews or file cards. Provider reasoning is persisted and appears before the answer in a collapsed Thinking disclosure with sanitized Markdown; models that return no reasoning show no placeholder. Tool calls render as terminal cards that stay collapsed by default even while a tool is actively streaming, so live output never takes over the transcript; expand one deliberately to inspect args/output. Interactive ask_question calls render as Ask Question cards with selectable options and an optional free-text answer; after the user replies, the sealed card shows the chosen answer. Message footers expose timestamps, model/trace metadata, copy, and retry where applicable. Only this area scrolls, and the pinned reader follows content across reasoning, tool, and text transitions even when the window is unfocused."
+            "The full-height message runway separates compact user cards from editorial assistant responses. User attachments render as image previews or file cards. Provider reasoning is persisted and appears before the answer in a collapsed Thinking disclosure with sanitized Markdown; models that return no reasoning show no placeholder. Tool calls render as terminal cards that stay collapsed by default even while a tool is actively streaming, so live output never takes over the transcript; expand one deliberately to inspect args/output. Interactive ask_question calls render as Ask Question cards with selectable options and an optional free-text answer; after the user replies, the sealed card shows the chosen answer. Message footers expose timestamps, the selected route/model, trace metadata, copy, and retry where applicable. If the provider reports a different upstream model, the footer keeps the user's selection visible and exposes the resolved identity in a tooltip. Only this area scrolls, and the pinned reader follows content across reasoning, tool, and text transitions even when the window is unfocused."
           ],
           "controls": [
             "acp-status-bar",
@@ -269,7 +278,7 @@
         {
           "heading": "Composer",
           "paragraphs": [
-            "A compact command dock at the bottom of the thread. Its message input starts at one row, grows with wrapped or explicit lines, and caps at ten rows before scrolling internally. Attachment, model, and workspace context stay grouped separately from context usage and turn actions; long labels truncate, and actions wrap below only at very narrow widths."
+            "A compact command dock at the bottom of the thread. Its message input starts at one row, grows with wrapped or explicit lines, and caps at ten rows before scrolling internally. Attachment, model, and workspace context stay grouped separately from context usage and turn actions; long labels truncate, and actions wrap below only at very narrow widths. During an active turn, submitting a non-empty draft creates one visible steer card without interrupting current reasoning or tool work. The steer can be cancelled while it waits, then enters the same active trace after provider reasoning (before newly proposed tools start) or after tools that were already live settle. After it is applied, the card remains as status until the turn settles. Changing the workspace during an active agent turn updates tool routing immediately and supplies a fresh synthetic runtime snapshot before the next provider round."
           ],
           "controls": [
             "agent-form",
@@ -285,6 +294,11 @@
             "agent-model-search",
             "agent-model-list",
             "agent-provider-status",
+            "agent-steer-queue",
+            "agent-steer-queue-title",
+            "agent-steer-queue-text",
+            "agent-steer-queue-state",
+            "agent-steer-cancel",
             "agent-stop-btn",
             "agent-send-btn"
           ]
@@ -479,7 +493,7 @@
         {
           "heading": "Constellation",
           "paragraphs": [
-            "The Connections view gives the graph the full panel width. It uses a compact force layout for related nodes and packs isolated nodes nearby, with edges between related skills. Node size reflects connection degree and labels become selective on larger graphs as the user zooms. Node color reflects kind and state. Click a dot to select the node and highlight its neighborhood. A time scrubber below fades nodes that fall after the selected percentage of the timeline."
+            "The Connections view gives the graph the full available panel width and height, with the time scrubber anchored as its footer. It uses a compact force layout for related nodes and packs isolated nodes nearby, with edges between related skills. Node size reflects connection degree and labels become selective on larger graphs as the user zooms. Node color reflects kind and state. Click a dot to select the node and highlight its neighborhood. The time scrubber fades nodes that fall after the selected percentage of the timeline."
           ],
           "controls": [
             "learning-constellation-canvas",
@@ -538,7 +552,7 @@
         {
           "heading": "ACP agents",
           "paragraphs": [
-            "Registry of ACP (Agent Client Protocol) external agents. Enable and configure providers such as Cursor, Devin, Codex, Claude Code, and Gemini. The Subagent routing card chooses a connected default and fallback order; each provider card shows a Connect button that runs a one-shot acp.probe (spawn \u2192 initialize \u2192 authenticate \u2192 session/new \u2192 close) and persists authStatus as connected or needs-auth. Connected providers are available as subagent targets via the subagent tool from within an agent conversation."
+            "Registry of ACP (Agent Client Protocol) external agents. Enable and configure providers such as Cursor, Devin, Codex, Claude Code, and Gemini. The Subagent routing card chooses a connected default and fallback order; each provider card shows a Connect button that runs a one-shot acp.probe (spawn → initialize → authenticate → session/new → close) and persists authStatus as connected or needs-auth. Connected providers are available as subagent targets via the subagent tool from within an agent conversation."
           ],
           "controls": [
             "acp-routing-card",
@@ -790,6 +804,58 @@
         }
       ]
     },
+    "ai-usage": {
+      "title": "Usage",
+      "purpose": "Read-only token-efficiency and completion-steering analytics derived from the complete retained local telemetry spine. Shows prioritized efficiency signals, a seven-calendar-day activity chart, and a recent-turn trace log without prompt content or keys.",
+      "howToOpen": "Click the Usage item in the left sidebar.",
+      "sections": [
+        {
+          "heading": "Efficiency signals",
+          "paragraphs": [
+            "The primary instrument highlights prompt-cache reuse, fresh tokens per completed turn, successful-turn rate, and provider request amplification. A secondary strip keeps total turns, rounds median and p95, failure-waste ratio, and cost per turn visible without giving every metric equal visual weight. Cost remains n/a until cost passthrough lands.",
+            "Refresh reports an explicit loading state and coalesces repeated clicks. Existing metrics remain visible if a later refresh fails; disabled, enabled-but-empty, and first-load error states are distinct."
+          ],
+          "controls": [
+            "telemetry-refresh-btn",
+            "telemetry-turns",
+            "telemetry-success-rate",
+            "telemetry-cache-hit",
+            "telemetry-fresh-tokens",
+            "telemetry-req-per-turn",
+            "telemetry-rounds-median",
+            "telemetry-rounds-p95",
+            "telemetry-failure-waste",
+            "telemetry-cost",
+            "telemetry-generated",
+            "telemetry-error"
+          ]
+        },
+        {
+          "heading": "Seven-day activity and completion steering",
+          "paragraphs": [
+            "A zero-filled activity chart covers the seven UTC calendar days ending at report generation and distinguishes completed, failed, and other turn outcomes. It is aggregated from every retained turn, independent of the recent-turn limit. Completion steering shows fired and skipped follow-up decisions plus skip reasons."
+          ],
+          "controls": [
+            "telemetry-spark",
+            "telemetry-steer-count",
+            "telemetry-steer-fired",
+            "telemetry-steer-skipped",
+            "telemetry-steer-reasons"
+          ]
+        },
+        {
+          "heading": "Recent turns",
+          "paragraphs": [
+            "A table of the newest 50 turns: short trace id, allowlisted status badge, completion time, duration, rounds, tool calls, input tokens, cache percentage, fresh input tokens, and output tokens. Rows are created with safe DOM text nodes rather than telemetry-derived HTML."
+          ],
+          "controls": [
+            "telemetry-turns-table-body",
+            "telemetry-no-turns",
+            "telemetry-empty"
+          ]
+        }
+      ]
+    },
     "pipeline-modal": {
       "title": "Pipeline editor modal",
       "purpose": "Form to create or edit a multi-step pipeline with an event trigger, step list, and per-step configuration. Schedule is not offered in Beta.",
@@ -897,6 +963,9 @@
           "controls": [
             "ai-global-model-form",
             "settings-global-model",
+            "settings-global-model-trigger",
+            "settings-global-model-search",
+            "settings-global-model-list",
             "settings-global-effort"
           ]
         },
@@ -1231,6 +1300,16 @@
         "update-banner-text",
         "update-banner-btn",
         "update-banner-close"
+      ]
+    },
+    "shell-drop-overlay": {
+      "section": "File drop",
+      "label": "File drop overlay",
+      "type": "overlay",
+      "action": "Full-window overlay shown while dragging files from the OS over the shell. In the Agent view it announces 'Drop to attach to your message' and routes dropped files to the composer; elsewhere it announces that files can only be attached in the Agent view. Never intercepts the drop (pointer-events: none).",
+      "related": [
+        "agent-file-input",
+        "agent-attachments"
       ]
     },
     "update-banner-text": {
@@ -1897,7 +1976,7 @@
       "type": "listitem",
       "selector": ".agent-conversation-item",
       "generated": true,
-      "action": "Click the row to open the conversation; click the \u00d7 button to delete it."
+      "action": "Click the row to open the conversation; click the × button to delete it."
     },
     "agent-thread": {
       "section": "Conversation thread",
@@ -2010,7 +2089,7 @@
       "type": "disclosure",
       "selector": ".agent-tool-terminal",
       "generated": true,
-      "action": "Timeline-style expandable tool call. Header keeps the \u203a_ rail badge plus tool name and status. Expand to inspect nested tool and Output panels with args and truncated result text."
+      "action": "Timeline-style expandable tool call. Header keeps the ›_ rail badge plus tool name and status. Expand to inspect nested tool and Output panels with args and truncated result text."
     },
     "agent-ask-card": {
       "section": "Conversation thread",
@@ -2135,7 +2214,7 @@
       "section": "Composer",
       "label": "Message input",
       "type": "textarea",
-      "action": "Primary text area for typing a prompt. Starts at one row, grows automatically with content, and scrolls internally after reaching ten rows.",
+      "action": "Primary text area for typing a prompt. Starts at one row, grows automatically with content, and scrolls internally after reaching ten rows. It remains draftable while any turn runs.",
       "shortcut": "Ctrl+Enter or Cmd+Enter submits the turn."
     },
     "agent-attachments": {
@@ -2148,7 +2227,7 @@
       "section": "Composer",
       "label": "File attachment input",
       "type": "file input",
-      "action": "Hidden file picker triggered by the attach button. It inspects file bytes, accepting supported images and PDFs plus valid UTF-8 text such as source code, markup, and configuration; filenames and claimed MIME types are not trusted."
+      "action": "Hidden file picker triggered by the attach button. It inspects file bytes, accepting supported images and PDFs plus valid UTF-8 text such as source code, markup, and configuration; filenames and claimed MIME types are not trusted. Files can also be dropped onto the window while the Agent view is active, which enters the same pipeline (see shell-drop-overlay)."
     },
     "agent-attach-btn": {
       "section": "Composer",
@@ -2164,7 +2243,7 @@
       "section": "Composer",
       "label": "Model and effort trigger",
       "type": "button",
-      "action": "Opens the model/effort picker dropdown. Label shows the selected model and effort, e.g. 'Model \u00b7 auto'."
+      "action": "Opens the model/effort picker dropdown. Label shows the selected model and effort, e.g. 'Model · auto'."
     },
     "agent-model-trigger-label": {
       "section": "Composer",
@@ -2194,7 +2273,37 @@
       "section": "Composer",
       "label": "Context usage status",
       "type": "status text",
-      "action": "Shows approximate used / total context window fill for the selected model (from agent.context estimates and local chars/4 estimates \u2014 not cumulative billed input tokens), or 'Choose a model' when none is selected."
+      "action": "Shows approximate used / total context window fill for the selected model (from agent.context estimates and local chars/4 estimates — not cumulative billed input tokens), or 'Choose a model' when none is selected."
+    },
+    "agent-steer-queue": {
+      "section": "Composer",
+      "label": "Pending steer",
+      "type": "status region",
+      "action": "Shows the one user steer waiting to enter the current agent trace at a safe provider/tool boundary. It changes to applied status after the runner consumes it."
+    },
+    "agent-steer-queue-title": {
+      "section": "Composer",
+      "label": "Steer status title",
+      "type": "status text",
+      "action": "Distinguishes a queued steer from one already applied to the active trace."
+    },
+    "agent-steer-queue-text": {
+      "section": "Composer",
+      "label": "Steer message preview",
+      "type": "text",
+      "action": "Shows a compact single-line preview of the pending steer or its attachment count."
+    },
+    "agent-steer-queue-state": {
+      "section": "Composer",
+      "label": "Steer boundary state",
+      "type": "status text",
+      "action": "Shows whether the steer is waiting for a safe boundary or already continuing the current turn."
+    },
+    "agent-steer-cancel": {
+      "section": "Composer",
+      "label": "Cancel steer",
+      "type": "icon button",
+      "action": "Cancels a steer that has not reached the runner boundary yet and restores its text and attachments to the composer."
     },
     "agent-stop-btn": {
       "section": "Composer",
@@ -2206,7 +2315,7 @@
       "section": "Composer",
       "label": "Send turn",
       "type": "submit button",
-      "action": "Submits the composer form and starts the agent turn. Shortcut is shown as a tooltip (Ctrl+Enter / \u2318\u21a9).",
+      "action": "Submits the composer form and starts an agent turn. If the room already owns a turn, it creates a visible cancellable steer that enters the same trace at the next safe provider/tool boundary. Send is disabled while one steer is pending. Shortcut is shown as a tooltip (Ctrl+Enter / ⌘↩).",
       "shortcut": "Ctrl+Enter or Cmd+Enter submits the turn."
     },
     "agent-delete-overlay": {
@@ -2287,7 +2396,7 @@
       "type": "status text",
       "selector": ".provider-status",
       "generated": true,
-      "action": "Shows 'Not configured', 'Needs API key', or 'Configured \u00b7 N models'."
+      "action": "Shows 'Not configured', 'Needs API key', or 'Configured · N models'."
     },
     "add-custom-provider": {
       "section": "Add custom provider",
@@ -2329,7 +2438,7 @@
       "section": "Provider summary",
       "label": "Default model",
       "type": "text",
-      "action": "Displays the provider's default model or 'Not set \u2014 choose per turn'."
+      "action": "Displays the provider's default model or 'Not set — choose per turn'."
     },
     "provider-detail-status": {
       "section": "Provider summary",
@@ -2577,7 +2686,7 @@
       "section": "Agent runtime",
       "label": "Total attempt budget",
       "type": "number input",
-      "action": "Maximum number of agent tool-call attempts per turn (1\u201332)."
+      "action": "Maximum number of agent tool-call attempts per turn (1–32)."
     },
     "settings-ai-vision": {
       "section": "Agent runtime",
@@ -2607,13 +2716,13 @@
       "section": "Agent limits",
       "label": "Max tool rounds",
       "type": "number input",
-      "action": "Maximum number of tool-call rounds per agent turn (1\u2013100). Default 50."
+      "action": "Maximum number of tool-call rounds per agent turn (1–100). Default 50."
     },
     "settings-ai-max-repeated-tool-calls": {
       "section": "Agent limits",
       "label": "Max repeated tool calls",
       "type": "number input",
-      "action": "Stops the agent if the same tool call repeats this many times (1\u2013200). Default 50."
+      "action": "Stops the agent if the same tool call repeats this many times (1–200). Default 50."
     },
     "ai-context-form": {
       "section": "Context compaction",
@@ -2631,25 +2740,25 @@
       "section": "Context compaction",
       "label": "Max input tokens",
       "type": "number input",
-      "action": "Token budget for the input prompt before compaction triggers (1000\u20132000000). Default 12000."
+      "action": "Token budget for the input prompt before compaction triggers (1000–2000000). Default 12000."
     },
     "settings-ai-reserve-tokens": {
       "section": "Context compaction",
       "label": "Reserve tokens",
       "type": "number input",
-      "action": "Tokens reserved for the model response, subtracted from the input budget (0\u20131000000). Default 3000."
+      "action": "Tokens reserved for the model response, subtracted from the input budget (0–1000000). Default 3000."
     },
     "settings-ai-recent-turns": {
       "section": "Context compaction",
       "label": "Recent turns to keep",
       "type": "number input",
-      "action": "Number of recent user-assistant turns preserved during compaction (1\u2013100). Default 4."
+      "action": "Number of recent user-assistant turns preserved during compaction (1–100). Default 4."
     },
     "settings-ai-summary-max-chars": {
       "section": "Context compaction",
       "label": "Summary max characters",
       "type": "number input",
-      "action": "Maximum character length of the compacted summary (100\u20131000000). Default 12000."
+      "action": "Maximum character length of the compacted summary (100–1000000). Default 12000."
     },
     "add-plugin-modal": {
       "section": "Install options",
@@ -2893,13 +3002,13 @@
       "section": "Runtime",
       "label": "Timeout (seconds)",
       "type": "number input",
-      "action": "Request timeout in seconds (1\u2013600)."
+      "action": "Request timeout in seconds (1–600)."
     },
     "settings-ai-attempts": {
       "section": "Runtime",
       "label": "Attempts",
       "type": "number input",
-      "action": "Maximum retry attempts for a single request (1\u201310)."
+      "action": "Maximum retry attempts for a single request (1–10)."
     },
     "settings-ai-weight": {
       "section": "Runtime",
@@ -2965,7 +3074,7 @@
       "section": "Confirmation",
       "label": "Delete",
       "type": "button",
-      "action": "Permanently deletes the provider after disabling the button and showing 'Deleting\u2026'."
+      "action": "Permanently deletes the provider after disabling the button and showing 'Deleting…'."
     },
     "context-menu": {
       "section": "Plugin actions",
@@ -3534,7 +3643,7 @@
       "type": "region",
       "selector": "#agent-shell",
       "generated": true,
-      "action": "Two-column agent workbench (conversations \u00b7 thread). Canvas opens as a fixed overlay drawer and does not add a third grid column."
+      "action": "Two-column agent workbench (conversations · thread). Canvas opens as a fixed overlay drawer and does not add a third grid column."
     },
     "agent-canvas-card": {
       "section": "Agent Canvas",
@@ -3574,7 +3683,7 @@
       "type": "label",
       "selector": ".agent-canvas-card-meta",
       "generated": true,
-      "action": "Size hint (lines \u00b7 bytes) on an artifact card."
+      "action": "Size hint (lines · bytes) on an artifact card."
     },
     "agent-canvas-card-actions": {
       "section": "Agent Canvas",
@@ -3854,6 +3963,126 @@
       "type": "container",
       "action": "Renders read-only rows for each live config option (excluding model and mode)."
     },
+    "telemetry-refresh-btn": {
+      "section": "Usage efficiency signals",
+      "label": "Refresh usage",
+      "type": "button",
+      "action": "Reloads the retained telemetry report, coalescing repeat clicks while a request is active."
+    },
+    "telemetry-turns": {
+      "section": "Usage efficiency signals",
+      "label": "Total turns",
+      "type": "metric",
+      "action": "Displays the number of retained agent-turn records."
+    },
+    "telemetry-success-rate": {
+      "section": "Usage efficiency signals",
+      "label": "Successful turns",
+      "type": "metric",
+      "action": "Displays completed turns as a percentage of all retained turns."
+    },
+    "telemetry-cache-hit": {
+      "section": "Usage efficiency signals",
+      "label": "Prompt cache reuse",
+      "type": "metric",
+      "action": "Displays cached provider input tokens as a percentage of total provider input tokens."
+    },
+    "telemetry-fresh-tokens": {
+      "section": "Usage efficiency signals",
+      "label": "Fresh input per completed turn",
+      "type": "metric",
+      "action": "Displays average uncached provider input tokens for completed turns."
+    },
+    "telemetry-req-per-turn": {
+      "section": "Usage efficiency signals",
+      "label": "Provider amplification",
+      "type": "metric",
+      "action": "Displays provider requests divided by retained turns."
+    },
+    "telemetry-rounds-median": {
+      "section": "Usage operational strip",
+      "label": "Median rounds",
+      "type": "metric",
+      "action": "Displays the median provider-round count per turn."
+    },
+    "telemetry-rounds-p95": {
+      "section": "Usage operational strip",
+      "label": "P95 rounds",
+      "type": "metric",
+      "action": "Displays the 95th-percentile provider-round count per turn."
+    },
+    "telemetry-failure-waste": {
+      "section": "Usage operational strip",
+      "label": "Failure waste",
+      "type": "metric",
+      "action": "Displays the share of turn tokens consumed by non-completed turns."
+    },
+    "telemetry-cost": {
+      "section": "Usage operational strip",
+      "label": "Cost per turn",
+      "type": "metric",
+      "action": "Displays cost per completed turn when provider cost passthrough becomes available; currently n/a."
+    },
+    "telemetry-generated": {
+      "section": "Usage report status",
+      "label": "Report timestamp",
+      "type": "text",
+      "action": "Displays when the current telemetry report was generated."
+    },
+    "telemetry-error": {
+      "section": "Usage report status",
+      "label": "Usage error",
+      "type": "alert",
+      "action": "Reports a telemetry query failure without clearing a previously rendered report."
+    },
+    "telemetry-spark": {
+      "section": "Seven-day activity",
+      "label": "Daily turn activity",
+      "type": "chart",
+      "action": "Plots completed, failed, and other turns across seven zero-filled UTC calendar days."
+    },
+    "telemetry-steer-count": {
+      "section": "Completion steering",
+      "label": "Steering decisions",
+      "type": "metric",
+      "action": "Displays all retained completion-steering decisions."
+    },
+    "telemetry-steer-fired": {
+      "section": "Completion steering",
+      "label": "Steering fired",
+      "type": "metric",
+      "action": "Displays decisions that started an agent follow-up turn."
+    },
+    "telemetry-steer-skipped": {
+      "section": "Completion steering",
+      "label": "Steering skipped",
+      "type": "metric",
+      "action": "Displays decisions that did not start a follow-up turn."
+    },
+    "telemetry-steer-reasons": {
+      "section": "Completion steering",
+      "label": "Steering skip reasons",
+      "type": "text",
+      "action": "Breaks skipped decisions down by not-idle, composer-busy, or other."
+    },
+    "telemetry-turns-table-body": {
+      "section": "Recent turns",
+      "label": "Recent turn rows",
+      "type": "table",
+      "action": "Displays the newest 50 turns with status, timing, tool, cache, and token metadata."
+    },
+    "telemetry-no-turns": {
+      "section": "Recent turns",
+      "label": "No recent turns",
+      "type": "status",
+      "action": "Explains when retained telemetry exists but contains no agent-turn records."
+    },
+    "telemetry-empty": {
+      "section": "Usage report status",
+      "label": "Usage empty state",
+      "type": "status",
+      "action": "Explains whether telemetry is disabled or enabled without recorded usage."
+    },
     "ai-global-model-form": {
       "section": "Global model",
       "label": "Global model form",
@@ -3863,8 +4092,26 @@
     "settings-global-model": {
       "section": "Global model",
       "label": "Global default model",
-      "type": "select",
-      "action": "Chooses the shell-wide default model, or Automatic (provider default) to leave it to each provider."
+      "type": "value",
+      "action": "Stores the staged shell-wide default model selected from the searchable picker until the form is saved."
+    },
+    "settings-global-model-trigger": {
+      "section": "Global model",
+      "label": "Choose global model",
+      "type": "button",
+      "action": "Opens the searchable global model picker."
+    },
+    "settings-global-model-search": {
+      "section": "Global model",
+      "label": "Search global models",
+      "type": "search",
+      "action": "Filters the imported model catalog by model or provider without saving a change."
+    },
+    "settings-global-model-list": {
+      "section": "Global model",
+      "label": "Global model results",
+      "type": "listbox",
+      "action": "Lists matching models and stages the selected default until Save global model is pressed."
     },
     "settings-global-effort": {
       "section": "Global model",

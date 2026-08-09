@@ -132,6 +132,10 @@ export class McpAgentToolGateway implements AgentToolGateway {
     this.routes.beginTurn(turnId, context);
   }
 
+  updateTurnWorkspace(turnId: string, workspace: string | undefined): void {
+    this.routes.setWorkspace(turnId, workspace);
+  }
+
   endConversation(conversationId: string): void {
     this.routes.endConversation(conversationId);
   }
@@ -218,19 +222,17 @@ export class McpAgentToolGateway implements AgentToolGateway {
           throw new ApplicationError("AGENT_INVALID_INPUT", "async_run requires a non-empty 'tool' name");
         }
         const toolArgs = (args.args && typeof args.args === "object" ? args.args : {}) as Readonly<Record<string, unknown>>;
-        const turnSignal = options?.signal;
         const runtime = this.asyncToolRuntime;
-        // Spawn the granted tool call as background work. The handle's abort
-        // signal is combined with the turn's signal so either kill or turn
-        // cancel aborts the in-flight MCP call. Progress notifications are
-        // piped into the handle's tail buffer for streaming peek.
+        // Spawn the granted tool call as background work. Its lifecycle belongs
+        // to the handle, not the spawning turn: Stop cancels foreground calls
+        // only; async_kill / job-card Stop cancels this work. Progress
+        // notifications are piped into the handle's tail buffer for peek.
         return execAsyncRun(this.asyncToolRuntime, args, {
           conversationId,
           ...(turnId ? { traceId: turnId } : {}),
           kind: "mcp",
           spawnWork: (handleSignal: AbortSignal, handleId: string) => {
-            const combined = combineSignals(handleSignal, turnSignal);
-            return this.callGrantedTool(toolName, toolArgs, requestId, turnId, combined, (progress) => {
+            return this.callGrantedTool(toolName, toolArgs, requestId, turnId, handleSignal, (progress) => {
               if (progress.message) {
                 runtime.appendTail(handleId, progress.message);
               }
@@ -283,7 +285,7 @@ export class McpAgentToolGateway implements AgentToolGateway {
             conversationId,
             ...(turnId ? { traceId: turnId } : {}),
             kind: "subagent",
-            spawnWork: (_handleSignal, handleId) => execSubagent(this.subagentPort, args, turnId, workspace, this.logger, parentConversationId, this.subagentExecutionPromptLoader).then((result) => {
+            spawnWork: (handleSignal, handleId) => execSubagent(this.subagentPort, args, turnId, workspace, this.logger, parentConversationId, this.subagentExecutionPromptLoader, handleSignal).then((result) => {
               // Store the subagent result in the handle's tail for peek.
               if (result && typeof result === "object" && "summary" in result) {
                 runtime.appendTail(handleId, String((result as { summary?: unknown }).summary ?? ""));
@@ -631,28 +633,4 @@ export class McpAgentToolGateway implements AgentToolGateway {
   private isInteractive(turnId: string): boolean {
     return this.askQuestions !== undefined && this.routes.isTurnInteractive(turnId);
   }
-}
-
-/**
- * Combine multiple abort signals into one. If any signal aborts, the combined
- * signal aborts. Uses `AbortSignal.any` when available (Node 20+), otherwise
- * falls back to a manual controller.
- */
-function combineSignals(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
-  const valid = signals.filter((s): s is AbortSignal => s !== undefined);
-  if (valid.length === 0) return undefined;
-  if (valid.length === 1) return valid[0];
-  // If any is already aborted, return an already-aborted signal.
-  const alreadyAborted = valid.find((s) => s.aborted);
-  if (alreadyAborted) return alreadyAborted;
-  // Use AbortSignal.any if available (Node 20+).
-  if (typeof (AbortSignal as unknown as { any?: unknown }).any === "function") {
-    return (AbortSignal as unknown as { any: (signals: AbortSignal[]) => AbortSignal }).any(valid);
-  }
-  // Fallback: manual controller.
-  const controller = new AbortController();
-  for (const signal of valid) {
-    signal.addEventListener("abort", () => controller.abort(), { once: true });
-  }
-  return controller.signal;
 }

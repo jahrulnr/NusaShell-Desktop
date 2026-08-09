@@ -800,3 +800,27 @@ describe("FileService.touchFile", () => {
     await expect(service.touchFile("missing.txt", { updateOnly: true })).rejects.toThrow(/does not exist/);
   });
 });
+describe("FileService.writeFile with encoding", () => {
+  it("writes utf8 content by default", async () => {
+    const result = await service.writeFile("hello.txt", "héllo 🌍");
+    expect(result.written).toBe(true);
+    const content = await fs.readFile(path.join(tmpDir, "hello.txt"), "utf8");
+    expect(content).toBe("héllo 🌍");
+  });
+
+  it("writes base64 content as raw bytes", async () => {
+    const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe]);
+    const b64 = Buffer.from(bytes).toString("base64");
+    const result = await service.writeFile("img.bin", b64, { encoding: "base64" });
+    expect(result.written).toBe(true);
+    const written = await fs.readFile(path.join(tmpDir, "img.bin"));
+    expect([...written]).toEqual([...bytes]);
+  });
+
+  it("keeps base64 writes byte-identical with NUL bytes", async () => {
+    const bytes = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x00, 0x7f]);
+    await service.writeFile("zeros.bin", bytes.toString("base64"), { encoding: "base64" });
+    const written = await fs.readFile(path.join(tmpDir, "zeros.bin"));
+    expect(written.equals(bytes)).toBe(true);
+  });
+});

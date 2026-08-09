@@ -51,7 +51,7 @@ A fixed workbench rail listing local conversation threads. Click a thread to ope
 
 ## Conversation thread
 
-The full-height message runway separates compact user cards from editorial assistant responses. User attachments render as image previews or file cards. Provider reasoning is persisted and appears before the answer in a collapsed Thinking disclosure with sanitized Markdown; models that return no reasoning show no placeholder. Tool calls render as terminal cards that stay collapsed by default even while a tool is actively streaming, so live output never takes over the transcript; expand one deliberately to inspect args/output. Interactive ask_question calls render as Ask Question cards with selectable options and an optional free-text answer; after the user replies, the sealed card shows the chosen answer. Message footers expose timestamps, model/trace metadata, copy, and retry where applicable. Only this area scrolls, and the pinned reader follows content across reasoning, tool, and text transitions even when the window is unfocused.
+The full-height message runway separates compact user cards from editorial assistant responses. User attachments render as image previews or file cards. Provider reasoning is persisted and appears before the answer in a collapsed Thinking disclosure with sanitized Markdown; models that return no reasoning show no placeholder. Tool calls render as terminal cards that stay collapsed by default even while a tool is actively streaming, so live output never takes over the transcript; expand one deliberately to inspect args/output. Interactive ask_question calls render as Ask Question cards with selectable options and an optional free-text answer; after the user replies, the sealed card shows the chosen answer. Message footers expose timestamps, the selected route/model, trace metadata, copy, and retry where applicable. If the provider reports a different upstream model, the footer keeps the user's selection visible and exposes the resolved identity in a tooltip. Only this area scrolls, and the pinned reader follows content across reasoning, tool, and text transitions even when the window is unfocused.
 
 - **ACP status bar (legacy)** (`#acp-status-bar`):
   - Section: Conversation thread
@@ -288,7 +288,7 @@ Permission and ask requests from a subagent are promoted into a persistent atten
 
 ## Composer
 
-A compact command dock at the bottom of the thread. Its message input starts at one row, grows with wrapped or explicit lines, and caps at ten rows before scrolling internally. Attachment, model, and workspace context stay grouped separately from context usage and turn actions; long labels truncate, and actions wrap below only at very narrow widths.
+A compact command dock at the bottom of the thread. Its message input starts at one row, grows with wrapped or explicit lines, and caps at ten rows before scrolling internally. Attachment, model, and workspace context stay grouped separately from context usage and turn actions; long labels truncate, and actions wrap below only at very narrow widths. During an active turn, submitting a non-empty draft creates one visible steer card without interrupting current reasoning or tool work. The steer can be cancelled while it waits, then enters the same active trace after provider reasoning (before newly proposed tools start) or after tools that were already live settle. After it is applied, the card remains as status until the turn settles. Changing the workspace during an active agent turn updates tool routing immediately and supplies a fresh synthetic runtime snapshot before the next provider round.
 
 - **Composer form** (`#agent-form`):
   - Section: Composer
@@ -298,7 +298,7 @@ A compact command dock at the bottom of the thread. Its message input starts at 
 - **Message input** (`#agent-input`):
   - Section: Composer
   - Type: textarea
-  - Action: Primary text area for typing a prompt. Starts at one row, grows automatically with content, and scrolls internally after reaching ten rows.
+  - Action: Primary text area for typing a prompt. Starts at one row, grows automatically with content, and scrolls internally after reaching ten rows. It remains draftable while any turn runs.
   - Shortcut: Ctrl+Enter or Cmd+Enter submits the turn.
 
 - **Attachment chips** (`#agent-attachments`):
@@ -309,7 +309,7 @@ A compact command dock at the bottom of the thread. Its message input starts at 
 - **File attachment input** (`#agent-file-input`):
   - Section: Composer
   - Type: file input
-  - Action: Hidden file picker triggered by the attach button. It inspects file bytes, accepting supported images and PDFs plus valid UTF-8 text such as source code, markup, and configuration; filenames and claimed MIME types are not trusted.
+  - Action: Hidden file picker triggered by the attach button. It inspects file bytes, accepting supported images and PDFs plus valid UTF-8 text such as source code, markup, and configuration; filenames and claimed MIME types are not trusted. Files can also be dropped onto the window while the Agent view is active, which enters the same pipeline (see shell-drop-overlay).
 
 - **Attach files** (`#agent-attach-btn`):
   - Section: Composer
@@ -351,6 +351,31 @@ A compact command dock at the bottom of the thread. Its message input starts at 
   - Type: status text
   - Action: Shows approximate used / total context window fill for the selected model (from agent.context estimates and local chars/4 estimates — not cumulative billed input tokens), or 'Choose a model' when none is selected.
 
+- **Pending steer** (`#agent-steer-queue`):
+  - Section: Composer
+  - Type: status region
+  - Action: Shows the one user steer waiting to enter the current agent trace at a safe provider/tool boundary. It changes to applied status after the runner consumes it.
+
+- **Steer status title** (`#agent-steer-queue-title`):
+  - Section: Composer
+  - Type: status text
+  - Action: Distinguishes a queued steer from one already applied to the active trace.
+
+- **Steer message preview** (`#agent-steer-queue-text`):
+  - Section: Composer
+  - Type: text
+  - Action: Shows a compact single-line preview of the pending steer or its attachment count.
+
+- **Steer boundary state** (`#agent-steer-queue-state`):
+  - Section: Composer
+  - Type: status text
+  - Action: Shows whether the steer is waiting for a safe boundary or already continuing the current turn.
+
+- **Cancel steer** (`#agent-steer-cancel`):
+  - Section: Composer
+  - Type: icon button
+  - Action: Cancels a steer that has not reached the runner boundary yet and restores its text and attachments to the composer.
+
 - **Stop turn** (`#agent-stop-btn`):
   - Section: Composer
   - Type: icon button
@@ -359,7 +384,7 @@ A compact command dock at the bottom of the thread. Its message input starts at 
 - **Send turn** (`#agent-send-btn`):
   - Section: Composer
   - Type: submit button
-  - Action: Submits the composer form and starts the agent turn. Shortcut is shown as a tooltip (Ctrl+Enter / ⌘↩).
+  - Action: Submits the composer form and starts an agent turn. If the room already owns a turn, it creates a visible cancellable steer that enters the same trace at the next safe provider/tool boundary. Send is disabled while one steer is pending. Shortcut is shown as a tooltip (Ctrl+Enter / ⌘↩).
   - Shortcut: Ctrl+Enter or Cmd+Enter submits the turn.
 
 ## Task strip

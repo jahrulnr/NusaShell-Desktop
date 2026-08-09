@@ -694,7 +694,8 @@ summary {
 .content:has(.learning-view.active),
 .content:has(.jobs-view.active),
 .content:has(.logs-view.active) {
-  padding: 0;
+  --workspace-gutter: clamp(12px, 2vw, 24px);
+  padding: var(--workspace-gutter);
 }
 
 .view.active.agent-view,
@@ -703,7 +704,12 @@ summary {
 .view.active.jobs-view,
 .view.active.logs-view {
   height: 100%;
-  background: transparent;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #111411;
+  box-shadow: inset 0 1px rgba(255,255,255,.025);
 }
 
 .agent-header,
@@ -1125,6 +1131,20 @@ summary {
   }
   .content::before,
   .content::after { display: none; }
+  .content:has(.agent-view.active),
+  .content:has(.skills-view.active),
+  .content:has(.learning-view.active),
+  .content:has(.jobs-view.active),
+  .content:has(.logs-view.active) {
+    padding: var(--space-2);
+  }
+  .view.active.agent-view,
+  .view.active.skills-view,
+  .view.active.learning-view,
+  .view.active.jobs-view,
+  .view.active.logs-view {
+    border-radius: var(--radius-sm);
+  }
   .greeting { font-size: 34px; }
   .category-filter {
     align-items: flex-start;

@@ -16,6 +16,8 @@ import type {
   AgentConversationKind,
   AgentConversationMessage,
   AgentConversationModelBinding,
+  AgentRuntimeHydration,
+  AgentRuntimeHydrationMessage,
   AgentConversationStep,
   AgentConversationToolCall,
   AgentConversationSummary,
@@ -24,14 +26,19 @@ import type {
   AgentSubagentStreamStep,
 } from "../shared/agent-conversation-contract.js";
 
-/** Default per-conversation message JSONL cap (~8 MiB), Codex-style soft trim target. */
-const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
-const HISTORY_SOFT_CAP_RATIO = 0.8;
-
-const CANVAS_ARTIFACT_MAX_COUNT = 20;
-const CANVAS_ARTIFACT_MAX_TOTAL_BYTES = 3 * 1024 * 1024;
-const CANVAS_ARTIFACT_MAX_SOURCE_BYTES = 512 * 1024;
-const SUBAGENT_RUN_MAX_COUNT = 50;
+import {
+  CANVAS_ARTIFACT_MAX_SOURCE_BYTES,
+  DEFAULT_MAX_BYTES,
+  RUNTIME_HYDRATION_MAX_BYTES,
+  RUNTIME_HYDRATION_MAX_MESSAGES,
+  SUBAGENT_RUN_MAX_COUNT,
+  conversationTitle,
+  evictCanvasArtifacts,
+  maxMessagePosition,
+  mergeResumedAssistantMessage,
+  normalizeMessageSequence,
+  softTrimTargetBytes,
+} from "@nusashell/domain";
 
 const LEGACY_LOCK = "__legacy__";
 const LIST_LOCK = "__list__";
@@ -104,7 +111,7 @@ export class AgentConversationStore {
         ...(options?.acp ? { acp: options.acp } : {}),
       };
       await this.writeMeta(meta);
-      return assemblyConversation(meta, [], [], []);
+      return assemblyConversation(meta, [], [], [], undefined);
     });
   }
 
@@ -238,6 +245,52 @@ export class AgentConversationStore {
     });
   }
 
+  /** Atomically materialize assistant/user/assistant segments from one steered run. */
+  async sealAssistantTranscript(
+    id: string,
+    traceId: string,
+    transcript: readonly AgentConversationMessage[],
+  ): Promise<AgentConversation> {
+    await this.ensureLegacyMigrated();
+    return this.withLock(id, async () => {
+      const meta = await this.requireMeta(id);
+      const messages = await this.readMessages(id);
+      const pending = meta.pendingAssistant;
+      if (pending && pending.traceId !== traceId) {
+        throw new Error(`Assistant reservation belongs to another trace: ${pending.traceId}`);
+      }
+      if (transcript.length === 0 || transcript.at(-1)?.role !== "assistant") {
+        throw new Error("Steered transcript must end with an assistant message");
+      }
+      const timestamp = this.now().toISOString();
+      const basePosition = pending?.position ?? Math.max(meta.nextMessagePosition, maxMessagePosition(messages) + 1);
+      const saved: AgentConversationMessage[] = [];
+      let pendingIdentityUsed = false;
+      for (const [index, message] of transcript.entries()) {
+        const usePendingIdentity = message.role === "assistant" && !pendingIdentityUsed && Boolean(pending);
+        if (usePendingIdentity) pendingIdentityUsed = true;
+        saved.push({
+          ...message,
+          id: usePendingIdentity ? pending!.messageId : this.allocateMessageId([...messages, ...saved]),
+          position: basePosition + index,
+          revision: usePendingIdentity ? Math.max(1, (pending?.revision ?? 0) + 1) : 1,
+          createdAt: message.createdAt ?? (usePendingIdentity ? pending?.createdAt : undefined) ?? timestamp,
+        });
+      }
+      const normalized = normalizeMessageSequence(id, [...messages, ...saved]).messages;
+      await this.rewriteMessages(id, normalized);
+      const { pendingAssistant: _pendingAssistant, ...rest } = meta;
+      const nextMeta: ConversationMeta = {
+        ...rest,
+        updatedAt: timestamp,
+        messageCount: normalized.length,
+        nextMessagePosition: Math.max(meta.nextMessagePosition, basePosition + saved.length),
+      };
+      await this.writeMeta(nextMeta);
+      return this.mustLoadConversation(id, nextMeta);
+    });
+  }
+
   async saveCheckpoint(id: string, checkpoint: AgentConversationCheckpoint): Promise<AgentConversation> {
     await this.ensureLegacyMigrated();
     return this.withLock(id, async () => {
@@ -358,11 +411,24 @@ export class AgentConversationStore {
         rm(this.messagesPath(id), { force: true }),
         rm(this.artifactsPath(id), { force: true }),
         rm(this.subagentsPath(id), { force: true }),
+        rm(this.runtimeHydrationPath(id), { force: true }),
         rm(`${this.metaPath(id)}.tmp`, { force: true }),
         rm(`${this.artifactsPath(id)}.tmp`, { force: true }),
         rm(`${this.subagentsPath(id)}.tmp`, { force: true }),
+        rm(`${this.runtimeHydrationPath(id)}.tmp`, { force: true }),
         rm(`${this.messagesPath(id)}.tmp`, { force: true }),
       ]);
+    });
+  }
+
+  async saveRuntimeHydration(id: string, hydration: AgentRuntimeHydration): Promise<AgentConversation> {
+    await this.ensureLegacyMigrated();
+    return this.withLock(id, async () => {
+      const meta = await this.requireMeta(id);
+      const normalized = normalizeRuntimeHydration(hydration);
+      if (!normalized) throw new Error("Invalid runtime hydration checkpoint");
+      await writeJsonAtomic(this.runtimeHydrationPath(id), normalized);
+      return this.mustLoadConversation(id, meta);
     });
   }
 
@@ -376,6 +442,9 @@ export class AgentConversationStore {
         ...(workspace ? { workspace } : {}),
         updatedAt: this.now().toISOString(),
       };
+      // Workspace is part of runtime_context. Removing the old sidecar makes
+      // an idle room self-hydrate on its next turn and prevents stale replay.
+      await rm(this.runtimeHydrationPath(id), { force: true });
       await this.writeMeta(nextMeta);
       return this.mustLoadConversation(id, nextMeta);
     });
@@ -626,7 +695,8 @@ export class AgentConversationStore {
     if (currentMeta !== meta) await this.writeMeta(currentMeta);
     const canvasArtifacts = await this.readArtifacts(id);
     const subagentRuns = await this.readSubagents(id);
-    return assemblyConversation(currentMeta, messages, canvasArtifacts, subagentRuns);
+    const runtimeHydration = await this.readRuntimeHydration(id);
+    return assemblyConversation(currentMeta, messages, canvasArtifacts, subagentRuns, runtimeHydration);
   }
 
   private async requireMeta(id: string): Promise<ConversationMeta> {
@@ -661,6 +731,10 @@ export class AgentConversationStore {
 
   private subagentsPath(id: string): string {
     return join(this.conversationsDir, `${id}.subagents.json`);
+  }
+
+  private runtimeHydrationPath(id: string): string {
+    return join(this.conversationsDir, `${id}.runtime.json`);
   }
 
   private async readMeta(id: string): Promise<ConversationMeta | null> {
@@ -719,7 +793,7 @@ export class AgentConversationStore {
     if (size <= this.maxBytes) return null;
     const messages = await this.readMessages(id);
     if (messages.length <= 1) return messages.length;
-    const target = Math.floor(this.maxBytes * HISTORY_SOFT_CAP_RATIO);
+    const target = softTrimTargetBytes(this.maxBytes);
     let kept = [...messages];
     while (kept.length > 1) {
       const encoded = Buffer.byteLength(`${kept.map((m) => JSON.stringify(m)).join("\n")}\n`, "utf8");
@@ -773,6 +847,19 @@ export class AgentConversationStore {
     }
     await writeJsonAtomic(this.subagentsPath(id), runs);
   }
+
+  private async readRuntimeHydration(id: string): Promise<AgentRuntimeHydration | undefined> {
+    try {
+      const raw = await readFile(this.runtimeHydrationPath(id), "utf8");
+      if (Buffer.byteLength(raw, "utf8") > RUNTIME_HYDRATION_MAX_BYTES) return undefined;
+      const normalized = normalizeRuntimeHydration(JSON.parse(raw));
+      return normalized ?? undefined;
+    } catch (error) {
+      if (isFileNotFound(error)) return undefined;
+      if (error instanceof SyntaxError) return undefined;
+      throw error;
+    }
+  }
 }
 
 function assemblyConversation(
@@ -780,6 +867,7 @@ function assemblyConversation(
   messages: readonly AgentConversationMessage[],
   canvasArtifacts: readonly AgentCanvasArtifact[],
   subagentRuns: readonly AgentSubagentRun[],
+  runtimeHydration: AgentRuntimeHydration | undefined,
 ): AgentConversation {
   const activeCanvasArtifactId = meta.activeCanvasArtifactId
     && canvasArtifacts.some((artifact) => artifact.id === meta.activeCanvasArtifactId)
@@ -796,6 +884,7 @@ function assemblyConversation(
     updatedAt: meta.updatedAt,
     messages,
     ...(meta.checkpoint ? { checkpoint: meta.checkpoint } : {}),
+    ...(runtimeHydration ? { runtimeHydration } : {}),
     ...(meta.workspace ? { workspace: meta.workspace } : {}),
     ...(meta.model ? { model: meta.model } : {}),
     ...(meta.kind ? { kind: meta.kind } : {}),
@@ -807,116 +896,59 @@ function assemblyConversation(
   };
 }
 
-function maxMessagePosition(messages: readonly AgentConversationMessage[]): number {
-  return messages.reduce((highest, message) => (
-    Number.isInteger(message.position) && (message.position ?? 0) > highest
-      ? message.position as number
-      : highest
-  ), 0);
+function normalizeRuntimeHydration(value: unknown): AgentRuntimeHydration | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<AgentRuntimeHydration>;
+  if (typeof candidate.traceId !== "string" || candidate.traceId.length === 0) return null;
+  if (typeof candidate.updatedAt !== "string" || candidate.updatedAt.length === 0) return null;
+  if (!Array.isArray(candidate.messages)
+    || candidate.messages.length < 2
+    || candidate.messages.length > RUNTIME_HYDRATION_MAX_MESSAGES) return null;
+  if (Buffer.byteLength(JSON.stringify(candidate), "utf8") > RUNTIME_HYDRATION_MAX_BYTES) return null;
+  const messages = candidate.messages.flatMap((message) => {
+    const normalized = normalizeRuntimeHydrationMessage(message);
+    return normalized ? [normalized] : [];
+  });
+  if (messages.length !== candidate.messages.length) return null;
+  const assistant = messages[0];
+  if (assistant?.role !== "assistant" || assistant.toolCalls.length !== messages.length - 1) return null;
+  const expectedIds = new Set(assistant.toolCalls.map((call) => call.id));
+  if (expectedIds.size !== assistant.toolCalls.length) return null;
+  for (const message of messages.slice(1)) {
+    if (message.role !== "tool" || !expectedIds.delete(message.toolCallId)) return null;
+  }
+  if (expectedIds.size > 0) return null;
+  return { traceId: candidate.traceId, updatedAt: candidate.updatedAt, messages };
 }
 
-function normalizeMessageSequence(
-  conversationId: string,
-  messages: readonly AgentConversationMessage[],
-): { messages: AgentConversationMessage[]; changed: boolean } {
-  const reservedPositions = new Set(messages.flatMap((message) => (
-    Number.isInteger(message.position) && (message.position ?? 0) > 0
-      ? [message.position as number]
-      : []
-  )));
-  const seenIds = new Set<string>();
-  const seenPositions = new Set<number>();
-  const safeConversationId = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  let nextLegacyPosition = 1;
-  let changed = false;
-
-  const normalized = messages.map((message, index) => {
-    let messageId = typeof message.id === "string" && message.id.length > 0 && !seenIds.has(message.id)
-      ? message.id
-      : "";
-    if (!messageId) {
-      const base = `msg_legacy_${safeConversationId}_${index + 1}`;
-      messageId = base;
-      let suffix = 1;
-      while (seenIds.has(messageId)) messageId = `${base}_${suffix++}`;
-      changed = true;
-    }
-    seenIds.add(messageId);
-
-    let position = Number.isInteger(message.position)
-      && (message.position ?? 0) > 0
-      && !seenPositions.has(message.position as number)
-      ? message.position as number
-      : 0;
-    if (!position) {
-      while (reservedPositions.has(nextLegacyPosition) || seenPositions.has(nextLegacyPosition)) {
-        nextLegacyPosition += 1;
-      }
-      position = nextLegacyPosition;
-      nextLegacyPosition += 1;
-      changed = true;
-    }
-    seenPositions.add(position);
-
-    const revision = Number.isInteger(message.revision) && (message.revision ?? 0) >= 1
-      ? message.revision as number
-      : 1;
-    if (revision !== message.revision) changed = true;
-    const nested = normalizeAssistantMessageOrder(message);
-    if (nested.changed) changed = true;
-
-    if (!nested.changed && messageId === message.id && position === message.position && revision === message.revision) {
-      return message;
-    }
-    return { ...nested.message, id: messageId, position, revision };
-  });
-
-  const ordered = [...normalized].sort((left, right) => {
-    const positionOrder = (left.position ?? 0) - (right.position ?? 0);
-    if (positionOrder !== 0) return positionOrder;
-    return (left.id ?? "").localeCompare(right.id ?? "");
-  });
-  if (!changed && ordered.some((message, index) => message !== normalized[index])) changed = true;
-  return { messages: ordered, changed };
-}
-
-function normalizeAssistantMessageOrder(
-  message: AgentConversationMessage,
-): { message: AgentConversationMessage; changed: boolean } {
-  if (message.role !== "assistant") return { message, changed: false };
-  let changed = false;
-  const normalizeCalls = (calls: readonly AgentConversationToolCall[]) => calls.map((call, index) => {
-    const callPosition = index + 1;
-    if (call.callPosition === callPosition) return call;
-    changed = true;
-    return { ...call, callPosition };
-  });
-  const toolCalls = Array.isArray(message.toolCalls) ? normalizeCalls(message.toolCalls) : undefined;
-  const steps = Array.isArray(message.steps)
-    ? message.steps.map((step, index) => {
-        const stepPosition = index + 1;
-        if (step.type === "tool_calls") {
-          const calls = normalizeCalls(step.calls);
-          if (step.stepPosition === stepPosition && calls.every((call, callIndex) => call === step.calls[callIndex])) {
-            return step;
-          }
-          changed = true;
-          return { ...step, stepPosition, calls };
-        }
-        if (step.stepPosition === stepPosition) return step;
-        changed = true;
-        return { ...step, stepPosition };
-      })
-    : undefined;
-  if (!changed) return { message, changed: false };
-  return {
-    message: {
-      ...message,
-      ...(toolCalls ? { toolCalls } : {}),
-      ...(steps ? { steps } : {}),
-    },
-    changed: true,
-  };
+function normalizeRuntimeHydrationMessage(value: unknown): AgentRuntimeHydrationMessage | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.role === "assistant" && typeof candidate.content === "string" && Array.isArray(candidate.toolCalls)) {
+    const toolCalls = candidate.toolCalls.flatMap((call) => {
+      if (typeof call !== "object" || call === null) return [];
+      const item = call as Record<string, unknown>;
+      if (typeof item.id !== "string" || !item.id.startsWith("hydrate:")
+        || typeof item.name !== "string" || item.name.length === 0
+        || typeof item.args !== "object" || item.args === null || Array.isArray(item.args)) return [];
+      return [{ id: item.id, name: item.name, args: item.args as Readonly<Record<string, unknown>> }];
+    });
+    return toolCalls.length === candidate.toolCalls.length
+      ? { role: "assistant", content: candidate.content, toolCalls }
+      : null;
+  }
+  if (candidate.role === "tool"
+    && typeof candidate.toolCallId === "string" && candidate.toolCallId.startsWith("hydrate:")
+    && typeof candidate.name === "string" && candidate.name.length > 0
+    && typeof candidate.content === "string") {
+    return {
+      role: "tool",
+      toolCallId: candidate.toolCallId,
+      name: candidate.name,
+      content: candidate.content,
+    };
+  }
+  return null;
 }
 
 function metaToSummary(meta: ConversationMeta): AgentConversationSummary {
@@ -1134,21 +1166,6 @@ function repairSubagentStepRecord(step: Record<string, unknown>): void {
   repairStepRecord(step);
 }
 
-function evictCanvasArtifacts(artifacts: readonly AgentCanvasArtifact[], activeId?: string): readonly AgentCanvasArtifact[] {
-  let list = [...artifacts].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-  while (list.length > CANVAS_ARTIFACT_MAX_COUNT) {
-    const removable = list.findIndex((artifact) => artifact.id !== activeId);
-    if (removable === -1) break;
-    list.splice(removable, 1);
-  }
-  while (list.reduce((total, artifact) => total + artifact.source.length, 0) > CANVAS_ARTIFACT_MAX_TOTAL_BYTES) {
-    const removable = list.findIndex((artifact) => artifact.id !== activeId);
-    if (removable === -1) break;
-    list.splice(removable, 1);
-  }
-  return list;
-}
-
 function isFileNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
@@ -1166,6 +1183,9 @@ function isConversationMessage(value: unknown): value is AgentConversationMessag
       message.role === "assistant"
       && typeof message.reasoning === "string"
       && message.reasoning.length <= 1_000_000
+    ))
+    && (message.contextUpdated === undefined || (
+      message.role === "assistant" && typeof message.contextUpdated === "boolean"
     ))
     && (message.steps === undefined || (
       message.role === "assistant"
@@ -1312,44 +1332,4 @@ function isCheckpoint(value: unknown): value is AgentConversationCheckpoint {
       || (Number.isInteger(checkpoint.compactedThroughPosition) && checkpoint.compactedThroughPosition > 0))
     && (checkpoint.via === "provider" || checkpoint.via === "extractive")
     && (checkpoint.compactionCount === undefined || (Number.isInteger(checkpoint.compactionCount) && checkpoint.compactionCount >= 0));
-}
-
-function conversationTitle(content: string): string {
-  const normalized = content.trim().replace(/\s+/g, " ");
-  if (!normalized) return "New conversation";
-  return normalized.length <= 60 ? normalized : `${normalized.slice(0, 57)}…`;
-}
-
-/**
- * A tool resume replaces the interrupted shell row with the new completed
- * result. The resumed provider result only contains the new segment, so keep
- * the interrupted segment's reasoning/tool graph for transcript replay.
- */
-function mergeResumedAssistantMessage(
-  previous: AgentConversationMessage,
-  next: AgentConversationMessage,
-): AgentConversationMessage {
-  const previousReasoning = typeof previous.reasoning === "string" ? previous.reasoning : "";
-  const nextReasoning = typeof next.reasoning === "string" ? next.reasoning : "";
-  const reasoning = previousReasoning && nextReasoning && previousReasoning !== nextReasoning
-    ? `${previousReasoning}\n\n${nextReasoning}`
-    : nextReasoning || previousReasoning;
-  const previousToolCalls = Array.isArray(previous.toolCalls) ? previous.toolCalls : [];
-  const nextToolCalls = Array.isArray(next.toolCalls) ? next.toolCalls : [];
-  const previousSteps = Array.isArray(previous.steps) ? previous.steps : [];
-  const nextSteps = Array.isArray(next.steps) ? next.steps : [];
-
-  return {
-    ...next,
-    ...(reasoning ? { reasoning } : {}),
-    ...(previousToolCalls.length || nextToolCalls.length
-      ? { toolCalls: [...previousToolCalls, ...nextToolCalls] }
-      : {}),
-    ...(previousSteps.length || nextSteps.length
-      ? { steps: [...previousSteps, ...nextSteps] }
-      : {}),
-    ...(previous.rounds !== undefined && next.rounds !== undefined
-      ? { rounds: previous.rounds + next.rounds }
-      : {}),
-  };
 }

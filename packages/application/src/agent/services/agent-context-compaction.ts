@@ -2,12 +2,17 @@ import type { LoggerPort } from "../../plugin/ports/logger.port.js";
 import type { AgentProvider, AgentMessage, AgentCompactionCheckpoint, AgentContextOptions, RunAgentTurnInput } from "./agent-turn-types.js";
 import {
   clampText,
-  clampToolResultContent,
   estimateMessageTokens,
   formatMessagesForSummary,
   resolveContextThreshold,
   tokenLimitReached,
 } from "./agent-turn-utils.js";
+// In-list shrink + hydration filtering moved to the domain layer (ticket #80,
+// Klaster A); the orchestration class below consumes them directly.
+import {
+  shrinkToolContents,
+  withoutRuntimeHydration,
+} from "@nusashell/domain";
 import {
   SUMMARY_PREFIX,
   MIN_SUMMARY_CHARS,
@@ -37,7 +42,7 @@ import {
  *  5. If still over budget after packing, drops the oldest retained user
  *     message iteratively (Codex compact-retry spirit).
  *
- * Mid-turn ephemeral `shrink()` stays unchanged: it clamps tool result
+ * Mid-turn `shrink()` stays unchanged: it clamps tool result
  * contents in the live messages array so the next `provider.complete` payload
  * stays under budget. It does NOT produce a durable checkpoint.
  */
@@ -76,12 +81,13 @@ export class ContextCompactor {
     //    On a resume path the live history may lack injected system prompts;
     //    `input.systemContext` restores them so the summarizer sees the same
     //    session context (Live MCP, skills, memory, todo) as a normal turn.
+    const durableInputMessages = withoutRuntimeHydration(input.messages);
     const compactInstruction = this.compactPrompt
       ?? "Create a concise context checkpoint for another AI. Preserve goals, decisions, constraints, important tool results, and unfinished work. Reply with the checkpoint only.";
     const systemContext = input.systemContext ?? [];
     const summarizerMessages: AgentMessage[] = [
       ...systemContext,
-      ...input.messages,
+      ...durableInputMessages,
       { role: "user", content: compactInstruction },
     ];
     let body = "";
@@ -111,7 +117,7 @@ export class ContextCompactor {
     //    gets evidence (files/tools/decisions), never a solitary one-line
     //    ghost. Never store empty.
     if (body.length < MIN_SUMMARY_CHARS) {
-      const excerpt = clampText(formatMessagesForSummary(input.messages), options.summaryMaxChars);
+      const excerpt = clampText(formatMessagesForSummary(durableInputMessages), options.summaryMaxChars);
       body = body.trim().length > 0
         ? `${body.trim()}\n\n${excerpt}`
         : excerpt;
@@ -119,7 +125,7 @@ export class ContextCompactor {
     }
 
     // REV2 hydration: the runtime capability snapshot is delivered as an
-    // ephemeral synthetic tool transcript appended AFTER the compacted history
+    // synthetic tool transcript appended AFTER the compacted history
     // (Option B: user summary -> assistant toolCalls -> tool results -> model
     // continues). TODO is task state, not capability: it is sealed into the
     // SAME user message as the summary (the tool graph that carried it is being
@@ -188,7 +194,7 @@ export class ContextCompactor {
       shrinkToolContents(compactedMessages, threshold, this.logger);
     }
 
-    // REV2: append the ephemeral hydration transcript LAST, so the drop-oldest
+    // REV2: append the refreshed hydration transcript LAST, so the drop-oldest
     // loop and shrink above can never discard it (it must always sit directly
     // after the compacted summary, before continued generation).
     if (hydrationMessages.length > 0) {
@@ -200,7 +206,7 @@ export class ContextCompactor {
     //    reports the count of input messages covered by this compact.
     const checkpoint: AgentCompactionCheckpoint = {
       summary: summaryText,
-      compactedMessageCount: input.messages.length,
+      compactedMessageCount: durableInputMessages.length,
       estimatedInputTokens,
       via,
       retainedUserMessages: retainedUserMessages,
@@ -243,77 +249,5 @@ export class ContextCompactor {
     if (!tokenLimitReached(estimated, threshold)) return;
     this.logger?.info("Agent mid-turn shrink triggered estimatedTokens=%d threshold=%d", estimated, threshold.soft);
     shrinkToolContents(messages, threshold, this.logger);
-  }
-}
-
-/**
- * In-list tool shrink: clamp `role:"tool"` message contents from oldest to
- * newest until the estimated token count drops below the soft threshold.
- * Preserves all messages (protocol validity) — only trims content.
- */
-function shrinkToolContents(messages: AgentMessage[], threshold: { soft: number }, logger?: LoggerPort): void {
-  const toolIndexes: number[] = [];
-  for (let i = 0; i < messages.length; i += 1) {
-    const message = messages[i];
-    if (message && message.role === "tool") toolIndexes.push(i);
-  }
-  if (toolIndexes.length === 0) return;
-
-  // Per-tool budget: divide the excess across tool messages, oldest first.
-  // Each tool message gets clamped to at most `perToolBudget` chars.
-  // Start with a conservative budget and reduce until under threshold.
-  const targetChars = threshold.soft * 4;
-  let totalChars = 0;
-  for (const m of messages) {
-    if (m && "content" in m) {
-      totalChars += typeof m.content === "string" ? m.content.length : JSON.stringify(m.content).length;
-    }
-  }
-  if (totalChars <= targetChars) return;
-
-  const excess = totalChars - targetChars;
-  // Clamp oldest tool messages first, up to removing `excess` chars total.
-  let remaining = excess;
-  for (const idx of toolIndexes) {
-    if (remaining <= 0) break;
-    const msg = messages[idx];
-    if (!msg || msg.role !== "tool" || typeof msg.content !== "string") continue;
-    if (msg.content.length <= 200) continue; // skip tiny results
-    const maxKeep = Math.max(200, msg.content.length - remaining);
-    const clamped = clampToolResultContent(msg.content, maxKeep, msg.name);
-    remaining -= (msg.content.length - clamped.length);
-    messages[idx] = { ...msg, content: clamped };
-  }
-
-  // If still over, do a second pass with a harder per-tool cap.
-  const stillOver = estimateMessageTokens(messages) > threshold.soft;
-  if (stillOver) {
-    const perToolBudget = Math.max(200, Math.floor(targetChars / Math.max(1, toolIndexes.length)));
-    for (const idx of toolIndexes) {
-      const msg = messages[idx];
-      if (!msg || msg.role !== "tool" || typeof msg.content !== "string") continue;
-      if (msg.content.length <= perToolBudget) continue;
-      messages[idx] = { ...msg, content: clampToolResultContent(msg.content, perToolBudget, msg.name) };
-    }
-  }
-
-  // Third pass: replace oldest results with short stubs when a large tool-round
-  // count still cannot fit under soft (100×200-char floors still overflow 9k).
-  let finalEstimate = estimateMessageTokens(messages);
-  if (finalEstimate > threshold.soft) {
-    for (const idx of toolIndexes) {
-      if (estimateMessageTokens(messages) <= threshold.soft) break;
-      const msg = messages[idx];
-      if (!msg || msg.role !== "tool" || typeof msg.content !== "string") continue;
-      if (msg.content.length <= 80) continue;
-      messages[idx] = {
-        ...msg,
-        content: `[truncated tool result: ${msg.name}]`,
-      };
-    }
-    finalEstimate = estimateMessageTokens(messages);
-    if (finalEstimate > threshold.soft) {
-      logger?.warn("Agent context still over budget after shrink estimatedTokens=%d threshold=%d toolMessages=%d", finalEstimate, threshold.soft, toolIndexes.length);
-    }
   }
 }

@@ -202,6 +202,7 @@ export type {
   AgentTurnRunnerDeps,
   RunAgentTurnInput,
   AgentTurnResult,
+  AgentSteerBoundary,
   AgentToolExecution,
   AgentToolResult,
   AgentToolStatus,
@@ -240,6 +241,7 @@ export type {
   AskQuestionServiceOptions,
   ActiveTurnOpenTool,
   ActiveTurnStreaming,
+  ActiveTurnSteer,
   ActiveTurnSnapshot,
   ActiveTurnStartInput,
   ActiveTurnProjectionPort,
@@ -248,6 +250,8 @@ export type {
   ManageTodosCommand,
   ManageTodosResult,
   KillToolJobCommand,
+  SteerAgentTurnCommand,
+  CancelAgentSteerCommand,
   ToolJobListQuery,
   ConversationTodoPort,
 } from "./agent/index.js";
@@ -271,6 +275,8 @@ export {
   AnswerAskQuestionHandler,
   ManageTodosHandler,
   KillToolJobHandler,
+  SteerAgentTurnHandler,
+  CancelAgentSteerHandler,
   GetActiveTurnHandler,
   ToolJobListHandler,
   injectPrompts,
@@ -342,19 +348,32 @@ export type {
   TelemetryTokenUsage,
   ProviderRequestTelemetry,
   AgentTurnTelemetry,
+  SteeringTelemetry,
   TelemetryRecord,
   TelemetryPort,
   BuildTurnTelemetryInput,
   MillisClock,
+  TelemetryQueryPort,
+  TelemetryReadOptions,
+  TelemetryReport,
+  DailyTurnSummary,
+  RecentTurn,
+  TelemetryGetReportQuery,
+  TelemetryGetReportResult,
+  RecordSteeringCommand,
 } from "./telemetry/index.js";
 export {
   NullTelemetryPort,
+  NullTelemetryQueryPort,
   toTelemetryUsage,
   freshInputTokens,
   cacheHitRate,
   buildTurnTelemetry,
   TelemetryAgentProvider,
   withTelemetry,
+  TelemetryGetReportHandler,
+  computeTelemetryReport,
+  RecordSteeringHandler,
 } from "./telemetry/index.js";
 
 // System queries
@@ -405,10 +424,11 @@ export {
   SKILLS_CATALOG_DESC_CAP,
 } from "./agent/services/skills-catalog-formatter.js";
 
-// Runtime hydration (ephemeral synthetic transcript)
+// Runtime hydration (hidden synthetic transcript)
 export {
   RuntimeHydrationBuilder,
   HYDRATE_ID_PREFIX,
+  extractLatestRuntimeHydration,
   type RuntimeContextSnapshot,
 } from "./agent/services/runtime-hydration.js";
 

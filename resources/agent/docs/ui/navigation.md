@@ -142,3 +142,13 @@ Vertical navigation on the left, ordered Home, Agent, Skills, Learning, Plugins,
   - Section: Sidebar
   - Type: toggle button
   - Action: Switches between icon-only and icon-with-text sidebar modes and remembers the choice on this device.
+
+## File drop
+
+Dragging files from the OS over the shell shows a full-window drop overlay instead of Chromium's default navigate/error. In the Agent view the dropped files are attached to the composer; in any other view the drop is rejected with a toast. Folders are not attachable in the shell and are directed to the Files plugin.
+
+- **File drop overlay** (`#shell-drop-overlay`):
+  - Section: File drop
+  - Type: overlay
+  - Action: Full-window overlay shown while dragging files from the OS over the shell. In the Agent view it announces 'Drop to attach to your message' and routes dropped files to the composer; elsewhere it announces that files can only be attached in the Agent view. Never intercepts the drop (pointer-events: none).
+  - Related: File attachment input (`#agent-file-input`), Attachment chips (`#agent-attachments`)

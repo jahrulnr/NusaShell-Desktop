@@ -40,12 +40,19 @@ export interface AgentConversationMessage {
   readonly revision?: number;
   readonly role: "user" | "assistant";
   readonly content: string;
+  /** User instruction injected into an already-running agent turn. */
+  readonly steer?: boolean;
   readonly attachments?: readonly AgentConversationAttachment[];
   readonly createdAt?: string;
   readonly updatedAt?: string;
   readonly traceId?: string;
+  /** Route/model identifier shown to the user for this turn. */
   readonly model?: string;
+  /** Canonical/upstream identifier reported by the provider, when different. */
+  readonly resolvedModel?: string;
   readonly rounds?: number;
+  /** True only for the turn that created a new hidden runtime-context checkpoint. */
+  readonly contextUpdated?: boolean;
   readonly reasoning?: string;
   readonly toolCalls?: readonly AgentConversationToolCall[];
   readonly steps?: readonly AgentConversationStep[];
@@ -72,6 +79,32 @@ export interface AgentConversationCheckpoint {
   readonly via: "provider" | "extractive";
   /** Number of compaction events recorded for this room. Optional for legacy checkpoints. */
   readonly compactionCount?: number;
+}
+
+export interface AgentRuntimeHydrationToolCall {
+  readonly id: string;
+  readonly name: string;
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
+export type AgentRuntimeHydrationMessage =
+  | {
+      readonly role: "assistant";
+      readonly content: string;
+      readonly toolCalls: readonly AgentRuntimeHydrationToolCall[];
+    }
+  | {
+      readonly role: "tool";
+      readonly toolCallId: string;
+      readonly name: string;
+      readonly content: string;
+    };
+
+/** Hidden provider checkpoint; never rendered as ordinary conversation rows. */
+export interface AgentRuntimeHydration {
+  readonly traceId: string;
+  readonly updatedAt: string;
+  readonly messages: readonly AgentRuntimeHydrationMessage[];
 }
 
 export interface AgentConversationAcp {
@@ -137,6 +170,7 @@ export interface AgentConversation {
   readonly updatedAt: string;
   readonly messages: readonly AgentConversationMessage[];
   readonly checkpoint?: AgentConversationCheckpoint;
+  readonly runtimeHydration?: AgentRuntimeHydration;
   readonly workspace?: string;
   readonly model?: AgentConversationModelBinding;
   readonly kind?: AgentConversationKind;
@@ -147,6 +181,6 @@ export interface AgentConversation {
   readonly activeSubagentRunId?: string;
 }
 
-export type AgentConversationSummary = Omit<AgentConversation, "messages" | "checkpoint"> & {
+export type AgentConversationSummary = Omit<AgentConversation, "messages" | "checkpoint" | "runtimeHydration"> & {
   readonly messageCount: number;
 };

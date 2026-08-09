@@ -24,6 +24,80 @@ import {
 } from "../src/renderer/agent-conversation-ui.js";
 
 describe("agent conversation UI helpers", () => {
+  it("keeps the hidden runtime hydration transcript in later provider turns", () => {
+    const hydration = {
+      traceId: "trace-first",
+      updatedAt: "2026-08-09T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant" as const,
+          content: "",
+          toolCalls: [{ id: "hydrate:first:0", name: "runtime_context", args: {} }],
+        },
+        {
+          role: "tool" as const,
+          toolCallId: "hydrate:first:0",
+          name: "runtime_context",
+          content: '{"workspace":"/workspace"}',
+        },
+      ],
+    };
+
+    expect(buildAgentContext({
+      runtimeHydration: hydration,
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "hi" },
+        { role: "user", content: "did hydration run?" },
+      ],
+    })).toEqual([
+      { role: "user", content: "hello" },
+      ...hydration.messages,
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "did hydration run?" },
+    ]);
+  });
+
+  it("places refreshed runtime hydration immediately after a compaction summary", () => {
+    const hydration = {
+      traceId: "trace-compact",
+      updatedAt: "2026-08-09T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant" as const,
+          content: "",
+          toolCalls: [{ id: "hydrate:compact:0", name: "runtime_context", args: {} }],
+        },
+        {
+          role: "tool" as const,
+          toolCallId: "hydrate:compact:0",
+          name: "runtime_context",
+          content: '{"workspace":"/next"}',
+        },
+      ],
+    };
+
+    expect(buildAgentContext({
+      runtimeHydration: hydration,
+      checkpoint: {
+        summary: "Conversation summary:\nEarlier work",
+        compactedMessageCount: 2,
+        retainedUserMessages: ["original request"],
+        via: "provider",
+      },
+      messages: [
+        { role: "user", content: "original request" },
+        { role: "assistant", content: "old answer" },
+        { role: "user", content: "continue" },
+      ],
+    })).toEqual([
+      { role: "user", content: "original request" },
+      { role: "user", content: "Conversation summary:\nEarlier work" },
+      ...hydration.messages,
+      { role: "user", content: "continue" },
+    ]);
+  });
+
   it("does not claim a tool turn is resumable from display history alone", () => {
     expect(hasToolResumeSnapshot({
       role: "assistant",
@@ -42,6 +116,17 @@ describe("agent conversation UI helpers", () => {
         { role: "tool", toolCallId: "call-1", name: "read", content: "status=success" },
       ],
     })).toBe(true);
+  });
+
+  it("does not treat the hidden hydration graph as resumable tool work", () => {
+    expect(hasToolResumeSnapshot({
+      role: "assistant",
+      status: "interrupted",
+      resumeMessages: [
+        { role: "assistant", content: "", toolCalls: [{ id: "hydrate:first:0", name: "runtime_context", args: {} }] },
+        { role: "tool", toolCallId: "hydrate:first:0", name: "runtime_context", content: "{}" },
+      ],
+    })).toBe(false);
   });
 
   it("rebuilds provider context from the saved compaction checkpoint", () => {

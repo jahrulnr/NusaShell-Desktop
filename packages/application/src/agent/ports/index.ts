@@ -1,6 +1,7 @@
 export type {
   ActiveTurnOpenTool,
   ActiveTurnStreaming,
+  ActiveTurnSteer,
   ActiveTurnSnapshot,
   ActiveTurnStartInput,
   ActiveTurnProjectionPort,

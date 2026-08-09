@@ -34,14 +34,17 @@ import { AgentTodoStrip } from "./agent-todo-strip.js";
 import { AgentToolJobStrip } from "./agent-tool-job-strip.js";
 import { CompletionSteerer } from "./completion-steerer.js";
 import { subscribeToolJobEvents } from "./turn-event-helper.js";
+import { sendRequest } from "./ws-client.js";
 
 const CANVAS_DRAWER_WIDTH_KEY = "nusashell.agent.canvas.drawer-width";
 
 export class AgentConversationController {
-  constructor({ shell, runTurn, cancelTurn, answerAsk, getActiveModel, getActiveEffort, getVisionMode, notify, log, runAcpTurn, cancelAcpTurn, answerAcpPermission, answerAcpAsk, getAcpSessionInfo, setAcpConfigOption, ensureAcpSession, refreshModelPicker, getActiveTurn, deleteTodos, getMaxInputTokens }) {
+  constructor({ shell, runTurn, cancelTurn, steerTurn, cancelSteer, answerAsk, getActiveModel, getActiveEffort, getVisionMode, notify, log, runAcpTurn, cancelAcpTurn, answerAcpPermission, answerAcpAsk, getAcpSessionInfo, setAcpConfigOption, ensureAcpSession, refreshModelPicker, getActiveTurn, deleteTodos, getMaxInputTokens }) {
     this.shell = shell;
     this.runTurn = runTurn;
     this.cancelTurn = cancelTurn;
+    this.sendSteer = steerTurn;
+    this.cancelSteer = cancelSteer;
     this.answerAsk = answerAsk;
     this.getActiveModel = getActiveModel;
     this.getActiveEffort = getActiveEffort || (() => "auto");
@@ -69,6 +72,13 @@ export class AgentConversationController {
     this.pendingDeleteTrigger = null;
     /** Per-conversation set of conversation IDs with an in-flight turn. */
     this.pendingTurnConversations = new Set();
+    /** Synthetic completion-steering turns may run while the user drafts. */
+    this.steeringTurnConversations = new Set();
+    /** User steering requests waiting for the runner's next safe boundary. */
+    this.queuedSteeringTurns = new Map();
+    /** Additional user steers held locally until the active backend steer applies. */
+    this.steerBacklogs = new Map();
+    this.steerQueueCollapsed = false;
     /** Brief re-entry guard during submit() before the conversation ID is known. */
     this._submitInFlight = false;
     /** Per-conversation trace IDs for in-flight or recently active turns. */
@@ -182,11 +192,229 @@ export class AgentConversationController {
   clearTurnRunning(conversationId) {
     if (conversationId) this.pendingTurnConversations.delete(conversationId);
     this.syncTodoStripTurnActive();
+    if (conversationId && this.completionSteerer?.conversationId === conversationId) {
+      this.completionSteerer.notifyIdle?.();
+    }
   }
 
   clearAllTurnsRunning() {
     this.pendingTurnConversations.clear();
     this.syncTodoStripTurnActive();
+  }
+
+  async queueSteeringTurn(conversationId, activeTraceId) {
+    const input = $("#agent-input");
+    const text = input?.value.trim() ?? "";
+    const attachments = [...this.attachments];
+    const entry = this.createSteerEntry({ text, attachments, traceId: activeTraceId });
+    this.clearSteerDraft();
+    return this.queueSteerEntry(conversationId, entry);
+  }
+
+  createSteerEntry({ text, attachments = [], traceId, source = "user" }) {
+    const message = buildAgentContext({ messages: [{ role: "user", content: text, ...(attachments.length ? { attachments } : {}) }] })[0];
+    if (!message || message.role !== "user") throw new Error("Could not build steering message");
+    return { id: crypto.randomUUID(), traceId, text, attachments, message, source, status: "waiting", request: null };
+  }
+
+  async queueSteerEntry(conversationId, entry) {
+    if (this.queuedSteeringTurns.has(conversationId)) {
+      const backlog = this.steerBacklogs.get(conversationId) ?? [];
+      backlog.push(entry);
+      this.steerBacklogs.set(conversationId, backlog);
+      this.renderSteerQueue();
+      this.updateSendAvailability();
+      return { accepted: true, steerId: entry.id };
+    }
+    return this.dispatchQueuedSteer(conversationId, entry);
+  }
+
+  async submitSteerEntry(entry) {
+    const conversationId = this.conversation?.id ?? "";
+    if (!conversationId) return;
+    const activeTraceId = this.activeTraceIds.get(conversationId);
+    if (this.isConversationRunning(conversationId) && activeTraceId) {
+      entry.traceId = activeTraceId;
+      return this.queueSteerEntry(conversationId, entry);
+    }
+    return this.submit({
+      steering: true,
+      turnMessage: { text: entry.text, attachments: entry.attachments, source: entry.source },
+    });
+  }
+
+  clearSteerDraft() {
+    const input = $("#agent-input");
+    if (input) {
+      input.value = "";
+      this.resizeComposerInput();
+    }
+    this.attachments = [];
+    this.renderAttachments();
+  }
+
+  async dispatchQueuedSteer(conversationId, entry) {
+    if (!this.sendSteer) throw new Error("Live steering is unavailable");
+    // The queued user instruction replaces any automatic TODO continuation
+    // that the current turn would otherwise start after sealing.
+    this.autoContinueAbortedConvs.add(conversationId);
+    const request = this.sendSteer({
+      conversationId,
+      traceId: entry.traceId,
+      steerId: entry.id,
+      displayText: entry.text || `Attached ${entry.attachments.length} file${entry.attachments.length === 1 ? "" : "s"}`,
+      message: entry.message,
+    });
+    entry.request = request;
+    entry.status = "queued";
+    this.queuedSteeringTurns.set(conversationId, entry);
+    this.renderSteerQueue();
+    this.updateSendAvailability();
+    try {
+      const result = await request;
+      if (!result?.accepted) throw new Error("The active turn no longer accepts steering");
+      void this.watchSteerState(conversationId, entry);
+      return result;
+    } catch (error) {
+      if (this.queuedSteeringTurns.get(conversationId) === entry) {
+        this.queuedSteeringTurns.delete(conversationId);
+        this.restoreSteerDraft(entry);
+      }
+      this.notify?.(`Could not send the queued steer: ${error.message || error}`, "error");
+      this.log?.("error", `Queued agent steering failed: ${error.message || String(error)}`);
+      this.renderSteerQueue();
+      this.updateSendAvailability();
+      return undefined;
+    }
+  }
+
+  dispatchNextSteer(conversationId) {
+    const backlog = this.steerBacklogs.get(conversationId) ?? [];
+    const next = backlog.shift();
+    if (backlog.length) this.steerBacklogs.set(conversationId, backlog);
+    else this.steerBacklogs.delete(conversationId);
+    if (next) void this.dispatchQueuedSteer(conversationId, next);
+  }
+
+  async watchSteerState(conversationId, entry) {
+    if (!this.getActiveTurn) return;
+    while (this.queuedSteeringTurns.get(conversationId) === entry) {
+      let active;
+      try {
+        active = await this.getActiveTurn(conversationId);
+      } catch (error) {
+        this.log?.("warn", `Steer status refresh failed: ${error.message || error}`);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
+      if (!active || active.traceId !== entry.traceId) {
+        this.queuedSteeringTurns.delete(conversationId);
+        this.steerBacklogs.delete(conversationId);
+        this.renderSteerQueue();
+        this.updateSendAvailability();
+        return;
+      }
+      const projected = active.steers?.find((steer) => steer.id === entry.id);
+      if (projected?.status === "applied" && entry.status !== "applied") {
+        entry.status = "applied";
+        this.promoteAppliedSteerToTranscript(conversationId, entry);
+        this.queuedSteeringTurns.delete(conversationId);
+        this.dispatchNextSteer(conversationId);
+        this.renderSteerQueue();
+        this.updateSendAvailability();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  restoreSteerDraft(entry) {
+    const input = $("#agent-input");
+    if (input && !input.value.trim()) input.value = entry.text;
+    if (this.attachments.length === 0) this.attachments = [...entry.attachments];
+    this.renderAttachments();
+    this.resizeComposerInput();
+  }
+
+  async cancelQueuedSteer() {
+    const conversationId = this.conversation?.id ?? "";
+    const entry = this.queuedSteeringTurns.get(conversationId);
+    if (!entry || entry.status !== "queued") return;
+    let queued;
+    try {
+      queued = await entry.request;
+    } catch {
+      // queueSteeringTurn owns rejection reporting and draft restoration.
+      return;
+    }
+    if (!queued?.accepted || this.queuedSteeringTurns.get(conversationId) !== entry) return;
+    let result;
+    try {
+      result = await this.cancelSteer?.({ conversationId, traceId: entry.traceId, steerId: entry.id });
+    } catch (error) {
+      this.notify?.(`Could not cancel the steer: ${error.message || error}`, "error");
+      this.log?.("error", `Agent steer cancellation failed: ${error.message || String(error)}`);
+      return;
+    }
+    if (!result?.accepted) return;
+    this.queuedSteeringTurns.delete(conversationId);
+    this.restoreSteerDraft(entry);
+    this.renderSteerQueue();
+    this.updateSendAvailability();
+    $("#agent-input")?.focus();
+  }
+
+  renderSteerQueue() {
+    const root = $("#agent-steer-queue");
+    if (!root) return;
+    const entry = this.queuedSteeringTurns.get(this.conversation?.id ?? "");
+    const backlog = this.steerBacklogs.get(this.conversation?.id ?? "") ?? [];
+    const total = (entry?.status === "queued" ? 1 : 0) + backlog.length;
+    root.hidden = total === 0;
+    if (total === 0) return;
+    const toggle = $("#agent-steer-queue-toggle");
+    const list = $("#agent-steer-queue-list");
+    if (toggle) toggle.setAttribute("aria-expanded", String(!this.steerQueueCollapsed));
+    if (list) list.hidden = this.steerQueueCollapsed;
+    $("#agent-steer-queue-text").textContent = entry.text || `${entry.attachments.length} attached file${entry.attachments.length === 1 ? "" : "s"}`;
+    $("#agent-steer-queue-title").textContent = `${total} steer${total === 1 ? "" : "s"} queued`;
+    $("#agent-steer-queue-state").textContent = backlog.length ? `${backlog.length} waiting behind this steer` : "Waiting for a safe boundary";
+    const cancel = $("#agent-steer-cancel");
+    cancel.hidden = entry.status !== "queued";
+  }
+
+  toggleSteerQueue() {
+    this.steerQueueCollapsed = !this.steerQueueCollapsed;
+    this.renderSteerQueue();
+  }
+
+  /**
+   * A live steer is a real user message, not composer chrome. Once the runner
+   * reaches a safe boundary, split the visual assistant stream around it so
+   * its transcript position is obvious before the durable turn seal arrives.
+   */
+  promoteAppliedSteerToTranscript(conversationId, entry) {
+    if (entry.transcriptShown || this.conversation?.id !== conversationId) return;
+    const stream = this.liveStreamStates.get(conversationId);
+    const currentAssistant = stream?.message;
+    if (currentAssistant?.isConnected) {
+      const hasBody = [...currentAssistant.children].some((child) => !child.classList.contains("agent-message-identity"));
+      if (hasBody) this.sealStreamingMessage(currentAssistant, {});
+      else currentAssistant.remove();
+    }
+    this.appendMessage("user", entry.text, { attachments: entry.attachments, steer: true });
+    entry.transcriptShown = true;
+    if (stream) {
+      const continuation = this.createStreamingMessage();
+      stream.message = continuation;
+      stream.lastKind = null;
+      stream.textBubble = null;
+      stream.reasoningEl = null;
+      stream.streamedText = "";
+      stream.reasoningText = "";
+      stream.toolCards = new Map();
+    }
+    this.scrollToBottom();
   }
 
   syncTodoStripTurnActive() {
@@ -395,15 +623,23 @@ export class AgentConversationController {
     $("#agent-input")?.focus();
   }
 
-  async submit({ retry = false } = {}) {
+  async submit({ retry = false, steering = false, turnMessage = null } = {}) {
     this.autoContinueAborted = false;
     const input = $("#agent-input");
     const sendButton = $("#agent-send-btn");
     const stopButton = $("#agent-stop-btn");
     const status = $("#agent-provider-status");
-    const text = input?.value.trim();
+    const text = turnMessage?.text ?? input?.value.trim();
+    const submittedAttachments = turnMessage?.attachments ?? this.attachments;
     const currentConversationId = this.conversation?.id ?? "";
-    if ((!retry && !text && this.attachments.length === 0) || this.isConversationRunning(currentConversationId) || this._submitInFlight) return;
+    if ((!retry && !text && submittedAttachments.length === 0) || this._submitInFlight) return;
+    if (this.isConversationRunning(currentConversationId)) {
+      const activeTraceId = this.activeTraceIds.get(currentConversationId);
+      if (!retry && !steering && activeTraceId) {
+        return this.queueSteeringTurn(currentConversationId, activeTraceId);
+      }
+      return;
+    }
     // A1: acquire the submit mutex BEFORE any await so a second Ctrl+Enter
     // during `create()` / `append()` cannot start a parallel turn.
     this._submitInFlight = true;
@@ -421,15 +657,18 @@ export class AgentConversationController {
         return;
       }
 
+      if (steering) this.steeringTurnConversations.add(ownerConversationId);
+
       if (this.conversation?.kind === "acp") {
         this.markTurnRunning(ownerConversationId);
         this._submitInFlight = false;
         this.turnOwnerConversationId = ownerConversationId;
-        return await this.submitAcp({ text, retry, ownerConversationId, ownerConversation });
+        return await this.submitAcp({ text, retry, steering, ownerConversationId, ownerConversation });
       }
     } catch (error) {
       this._submitInFlight = false;
       if (ownerConversationId) this.clearTurnRunning(ownerConversationId);
+      if (ownerConversationId) this.steeringTurnConversations.delete(ownerConversationId);
       throw error;
     }
 
@@ -442,30 +681,42 @@ export class AgentConversationController {
     const turnEndPromise = new Promise((resolve) => { turnEndResolve = resolve; });
     let turnEnded = false;
     let sealedResult = null;
+    let turnTraceId = "";
     try {
       this.turnOwnerConversationId = ownerConversationId;
       this.markTurnRunning(ownerConversationId);
       this._submitInFlight = false;
       this.activeTraceId = crypto.randomUUID();
-      input.disabled = true;
+      turnTraceId = this.activeTraceId;
+      // A running turn reserves Send, not the draft field. The user must be
+      // able to compose a follow-up (or a stop instruction) before the turn
+      // settles, regardless of whether the turn was synthetic steering.
+      input.disabled = false;
       sendButton.disabled = true;
       stopButton.hidden = false;
-      this.clearVisibleFailureMessage(ownerConversationId, { includeInterrupted: retry });
+      this.clearVisibleFailureMessage(ownerConversationId);
       if (!retry) {
-        const attachments = [...this.attachments];
+        const attachments = [...submittedAttachments];
         ownerConversation = await this.shell.agentConversations.append(ownerConversationId, {
           role: "user",
           content: text,
+          ...(steering ? { steer: true } : {}),
           ...(attachments.length ? { attachments } : {}),
         });
         if (this.conversation?.id === ownerConversationId) {
           this.assignConversationFromStore(ownerConversationId, ownerConversation);
           const savedMessage = ownerConversation.messages.at(-1);
           this.appendMessage("user", text, savedMessage ?? { attachments });
-          input.value = "";
-          this.resizeComposerInput();
-          this.attachments = [];
-          this.renderAttachments();
+          if (!turnMessage) {
+            input.value = "";
+            this.resizeComposerInput();
+            this.attachments = [];
+            this.renderAttachments();
+          }
+          // Send remains disabled until this room's turn has settled, while
+          // the textarea remains available for a draft.
+          input.disabled = false;
+          this.updateSendAvailability();
         }
         await this.refresh();
       }
@@ -551,7 +802,7 @@ export class AgentConversationController {
         this.scrollToBottom();
       };
       const result = await this.runTurn(turnMessages, {
-        traceId: this.activeTraceId,
+        traceId: turnTraceId,
         workspace: ownerConversation.workspace,
         conversationId: ownerConversationId,
         // Ticket #38: thread the room-bound model + effort so the actual turn
@@ -698,6 +949,9 @@ export class AgentConversationController {
           : ownerConversation?.messages.find((message) => message.role === "assistant" && message.traceId === result.traceId);
         const sealedByMain = sealedMessage?.role === "assistant" && sealedMessage?.traceId === result.traceId;
         if (!sealedByMain) {
+          if (result.steerBoundaries?.length) {
+            throw new Error("Steered transcript was not sealed by the main process");
+          }
           const toolCalls = Array.isArray(result.toolCalls)
             ? result.toolCalls.map(toConversationToolCall)
             : undefined;
@@ -706,7 +960,10 @@ export class AgentConversationController {
             role: "assistant",
             content: result.text,
             traceId: result.traceId,
-            model: result.model,
+            model: result.requestedModel ?? result.model,
+            ...(result.requestedModel && result.model && result.requestedModel !== result.model
+              ? { resolvedModel: result.model }
+              : {}),
             rounds: result.rounds,
             reasoning: result.reasoning,
             ...(toolCalls?.length ? { toolCalls } : {}),
@@ -746,7 +1003,15 @@ export class AgentConversationController {
       const savedMessage = assistantReservation
         ? ownerConversation.messages.find((message) => message.id === assistantReservation.messageId)
         : ownerConversation.messages.find((message) => message.role === "assistant" && message.traceId === result.traceId);
-      this.sealStreamingMessage(pending, savedMessage ?? result);
+      if (result.steerBoundaries?.length && this.conversation?.id === ownerConversationId) {
+        // The main process persisted assistant → user steer → assistant as
+        // separate rows. Rebuild now; sealing the old pending node would show
+        // only the pre-steer reservation until the room was reopened.
+        this.renderThread();
+        pending = null;
+      } else {
+        this.sealStreamingMessage(pending, savedMessage ?? result);
+      }
       await this.refresh();
       // refresh() already calls updateContextStatus() with an estimate from
       // persisted messages. Do NOT overwrite with result.usage.inputTokens —
@@ -791,6 +1056,9 @@ export class AgentConversationController {
             sealedByMain
             || (lastDurableAfter?.status === "interrupted" && lastDurableAfter?.traceId === partial.traceId);
           if (!mainSealed) {
+            if (partial.steerBoundaries?.length) {
+              throw new Error("Interrupted steered transcript was not sealed by the main process");
+            }
             const interruptedMessage = {
               role: "assistant",
               content: streamedText || stub,
@@ -813,6 +1081,10 @@ export class AgentConversationController {
                 ? await this.shell.agentConversations.replaceLastInterrupted(ownerConversationId, interruptedMessage)
                 : await this.shell.agentConversations.append(ownerConversationId, interruptedMessage);
             if (this.conversation?.id === ownerConversationId) this.assignConversationFromStore(ownerConversationId, ownerConversation);
+          }
+          if (partial.steerBoundaries?.length && this.conversation?.id === ownerConversationId) {
+            this.renderThread();
+            pending = null;
           }
         } catch (persistError) {
           this.log("error", `Interrupted assistant persistence failed: ${persistError.message || String(persistError)}`);
@@ -967,6 +1239,7 @@ export class AgentConversationController {
       // scope), not this.turnOwnerConversationId, so concurrent turns in
       // other conversations don't clear each other's globals.
       this.clearTurnRunning(ownerConversationId);
+      this.steeringTurnConversations.delete(ownerConversationId);
       this.activeTraceIds.delete(ownerConversationId);
       this.liveStreamStates.delete(ownerConversationId);
       this.clearStop(ownerConversationId);
@@ -1043,7 +1316,7 @@ export class AgentConversationController {
         if (!conv) return;
 
         this.activeTraceId = crypto.randomUUID();
-        input.disabled = true;
+        input.disabled = false;
         sendButton.disabled = true;
         stopButton.hidden = false;
         const chainLabel = maxAutoContinues === 0
@@ -1377,7 +1650,7 @@ export class AgentConversationController {
     }
   }
 
-  async submitAcp({ text, retry, ownerConversationId = this.conversation?.id, ownerConversation = this.conversation }) {
+  async submitAcp({ text, retry, steering = false, ownerConversationId = this.conversation?.id, ownerConversation = this.conversation }) {
     const input = $("#agent-input");
     const sendButton = $("#agent-send-btn");
     const stopButton = $("#agent-stop-btn");
@@ -1389,9 +1662,11 @@ export class AgentConversationController {
 
     let pending = null;
     let retryIsSafe = false;
+    let turnTraceId = "";
     try {
       this.activeTraceId = crypto.randomUUID();
-      input.disabled = true;
+      turnTraceId = this.activeTraceId;
+      input.disabled = false;
       sendButton.disabled = true;
       stopButton.hidden = false;
       this.clearVisibleFailureMessage(ownerConversationId, { includeInterrupted: retry });
@@ -1399,6 +1674,7 @@ export class AgentConversationController {
         ownerConversation = await this.shell.agentConversations.append(ownerConversationId, {
           role: "user",
           content: text,
+          ...(steering ? { steer: true } : {}),
         });
         if (this.conversation?.id === ownerConversationId) {
           this.assignConversationFromStore(ownerConversationId, ownerConversation);
@@ -1588,6 +1864,7 @@ export class AgentConversationController {
       // Use the parameter ownerConversationId, not this.turnOwnerConversationId,
       // so concurrent turns in other conversations don't clear each other's globals.
       this.clearTurnRunning(ownerConversationId);
+      this.steeringTurnConversations.delete(ownerConversationId);
       this.activeTraceIds.delete(ownerConversationId);
       this.clearStop(ownerConversationId);
       if (this.turnOwnerConversationId === ownerConversationId) {
@@ -1620,16 +1897,23 @@ export class AgentConversationController {
       event.preventDefault();
       void this.submit();
     });
+    $("#agent-steer-cancel")?.addEventListener("click", () => void this.cancelQueuedSteer());
+    $("#agent-steer-queue-toggle")?.addEventListener("click", () => this.toggleSteerQueue());
     const input = $("#agent-input");
     input.addEventListener("input", () => {
       this.scheduleComposerResize();
       this.updateSendAvailability();
+      if (!input.value.trim()) this.completionSteerer?.notifyIdle?.();
     });
     // Track IME composition so a candidate-confirm Enter (and the Send button)
     // does not submit a half-composed prompt (#46). During composition the
     // keydown handler must skip intercepting Enter.
     input.addEventListener("compositionstart", () => { this.inputComposing = true; this.updateSendAvailability(); });
-    input.addEventListener("compositionend", () => { this.inputComposing = false; this.updateSendAvailability(); });
+    input.addEventListener("compositionend", () => {
+      this.inputComposing = false;
+      this.updateSendAvailability();
+      if (!input.value.trim()) this.completionSteerer?.notifyIdle?.();
+    });
     input.addEventListener("keydown", (event) => {
       // IME composition: Enter confirms a candidate — never intercept.
       if (event.isComposing || event.keyCode === 229) return;
@@ -1750,15 +2034,21 @@ export class AgentConversationController {
 
   /**
    * Reflect whether the composer can send on #agent-send-btn (#46). The button
-   * is disabled when the input is empty (nothing to send), during an active IME
-   * composition, or while a turn owns the room (kept separate from this flag).
+   * is disabled when the input is empty, during an active IME composition, or
+   * while an already-submitted steering request is waiting for settlement.
+   * A running room with a known trace stays sendable: Send steers that turn.
    */
   updateSendAvailability() {
     const input = $("#agent-input");
     const sendButton = $("#agent-send-btn");
     if (!input || !sendButton) return;
     const hasContent = Boolean(input.value?.trim()) || this.attachments.length > 0;
-    sendButton.disabled = !hasContent || this.inputComposing;
+    const visibleConversationId = this.conversation?.id ?? "";
+    const runningWithoutTrace = this.isConversationRunning(visibleConversationId)
+      && !this.activeTraceIds.get(visibleConversationId);
+    sendButton.disabled = runningWithoutTrace
+      || !hasContent
+      || this.inputComposing;
   }
 
   resizeComposerInput() {
@@ -1823,6 +2113,15 @@ export class AgentConversationController {
     // backend cancel settles are NOT painted (#44).
     const stopConversationId = this.activeId || this.conversation?.id || this.turnOwnerConversationId || "";
     this.requestStop(stopConversationId);
+    this.completionSteerer?.discard?.();
+    // Stop is the explicit destructive action. Cancel any pending steer for
+    // this room, but leave the draft in the composer so the user can edit or
+    // send it later.
+    const queuedSteer = this.queuedSteeringTurns.get(stopConversationId);
+    if (queuedSteer?.status === "queued") this.restoreSteerDraft(queuedSteer);
+    this.queuedSteeringTurns.delete(stopConversationId);
+    this.renderSteerQueue();
+    this.updateSendAvailability();
 
     this.disposeStreamingCadence(this.liveStreamState);
     this.autoContinueAborted = true;
@@ -1935,6 +2234,11 @@ export class AgentConversationController {
           !this.isConversationRunning(conversationId) && !this.isComposerBlockingSteer(),
         startTurn: (message) => this.steerTurn(message),
         log: (msg) => this.log?.(msg),
+        // Fire-and-forget steering observability into telemetry (metadata-only,
+        // never prompt/job content).
+        onSteering: (steer) => {
+          sendRequest("telemetry.record_steering", steer, 5000).catch(() => {});
+        },
       });
       this.toolJobEventDisposer?.();
       this.toolJobEventDisposer = subscribeToolJobEvents({
@@ -1967,18 +2271,13 @@ export class AgentConversationController {
    * Never overwrites a user draft or steals focus during IME composition (#69).
    */
   async steerTurn(message) {
-    if (this.isConversationRunning(this.conversation?.id)) return;
     if (!this.conversation) return;
     if (this.isComposerBlockingSteer()) {
       this.log?.("completion steer cancelled — composer has unsent draft or IME composition");
       return;
     }
-    const input = $("#agent-input");
-    if (input) {
-      input.value = message;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    await this.submit();
+    const entry = this.createSteerEntry({ text: message, source: "background" });
+    await this.submitSteerEntry(entry);
   }
 
   /**
@@ -2020,11 +2319,11 @@ export class AgentConversationController {
   resetComposerForConversation(conversationId) {
     const isOwner = this.isConversationRunning(conversationId);
     const input = $("#agent-input");
-    const sendButton = $("#agent-send-btn");
     const stopButton = $("#agent-stop-btn");
+    this.renderSteerQueue();
     if (isOwner) {
-      if (input) input.disabled = true;
-      if (sendButton) sendButton.disabled = true;
+      if (input) input.disabled = false;
+      this.updateSendAvailability();
       if (stopButton) stopButton.hidden = false;
       return;
     }
@@ -2449,7 +2748,23 @@ export class AgentConversationController {
       return;
     }
 
-    this.activeTraceId = snap.traceId;
+    const projectedSteer = snap.steers?.[0];
+    if (projectedSteer && !this.queuedSteeringTurns.has(conversationId)) {
+      const entry = {
+        id: projectedSteer.id,
+        traceId: snap.traceId,
+        text: projectedSteer.content,
+        attachments: [],
+        status: projectedSteer.status,
+        request: Promise.resolve({ accepted: true, steerId: projectedSteer.id }),
+      };
+      this.queuedSteeringTurns.set(conversationId, entry);
+      void this.watchSteerState(conversationId, entry);
+    }
+
+    // Rehydration belongs to the room being restored, even if a different
+    // background room still owns this controller's latest local turn.
+    this.activeTraceIds.set(conversationId, snap.traceId);
     this.markTurnRunning(conversationId);
     this.turnOwnerConversationId = conversationId;
     this.resetComposerForConversation(conversationId);
@@ -2683,14 +2998,23 @@ export class AgentConversationController {
     }
 
     const footer = element("footer", "agent-message-footer");
+    if (role === "user" && meta.steer) {
+      footer.appendChild(element("span", "agent-message-steer-flag", "Steer message"));
+    }
     const timestamp = formatMessageTimestamp(meta.createdAt);
     if (timestamp) {
       const time = element("time", "agent-message-time", timestamp);
       time.dateTime = meta.createdAt;
       footer.appendChild(time);
     }
-    if (role === "assistant" && meta.model) footer.appendChild(messageDetail(meta.model));
+    if (role === "assistant" && meta.model) footer.appendChild(modelMessageDetail(meta));
     if (role === "assistant" && meta.rounds) footer.appendChild(messageDetail(`${meta.rounds} round${meta.rounds === 1 ? "" : "s"}`));
+    if (role === "assistant" && meta.contextUpdated) {
+      const contextUpdated = messageDetail("Context updated");
+      contextUpdated.classList.add("agent-context-update-marker");
+      contextUpdated.title = "Runtime context was refreshed for this turn";
+      footer.appendChild(contextUpdated);
+    }
     if (role === "assistant" && meta.traceId) footer.appendChild(messageDetail(`trace ${meta.traceId.slice(0, 8)}`));
 
     const actions = element("div", "agent-message-actions");
@@ -4385,6 +4709,21 @@ export class AgentConversationController {
     const thread = $("#agent-thread");
     if (!thread) return null;
     $("#agent-empty")?.remove();
+    const reservedMessageId = reservation?.messageId;
+    const interrupted = reservedMessageId
+      ? [...thread.querySelectorAll("article.agent-message.agent-message-interrupted")]
+        .find((message) => message.dataset.messageId === reservedMessageId)
+      : undefined;
+    if (interrupted) {
+      interrupted.classList.remove("agent-message-interrupted", "agent-message-stopped");
+      interrupted.classList.add("agent-pending");
+      interrupted.querySelector(".agent-message-footer")?.remove();
+      const mark = interrupted.querySelector(".agent-message-mark");
+      if (mark) mark.textContent = "◌";
+      const meta = interrupted.querySelector(".agent-message-meta");
+      if (meta) meta.textContent = "Working";
+      return interrupted;
+    }
     const message = element("article", "agent-message assistant agent-pending");
     if (reservation?.messageId) message.dataset.messageId = reservation.messageId;
     message.setAttribute("aria-label", "NusaShell Agent response");
@@ -5197,7 +5536,7 @@ export class AgentConversationController {
       time.dateTime = meta.createdAt ?? new Date().toISOString();
       footer.appendChild(time);
     }
-    if (meta.model) footer.appendChild(messageDetail(meta.model));
+    if (meta.requestedModel || meta.model) footer.appendChild(modelMessageDetail(meta));
     if (meta.rounds) footer.appendChild(messageDetail(`${meta.rounds} round${meta.rounds === 1 ? "" : "s"}`));
     if (meta.traceId) footer.appendChild(messageDetail(`trace ${meta.traceId.slice(0, 8)}`));
     const actions = element("div", "agent-message-actions");
@@ -5352,8 +5691,44 @@ function parseAskAnswer(output) {
       text: typeof data.text === "string" ? data.text : "",
     };
   } catch {
+    const lines = output.split("\n");
+    const values = new Map();
+    for (const line of lines) {
+      const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (match) values.set(match[1], terminalAskValue(match[2]));
+    }
+    const via = values.get("via");
+    if (via === "option" || via === "text") {
+      return {
+        via,
+        answer: typeof values.get("answer") === "string" ? values.get("answer") : "",
+        optionIds: terminalAskOptionIds(lines),
+        text: typeof values.get("text") === "string" ? values.get("text") : "",
+      };
+    }
     return { via: "text", answer: output, optionIds: [], text: "" };
   }
+}
+
+function terminalAskValue(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : raw;
+  } catch {
+    return raw;
+  }
+}
+
+function terminalAskOptionIds(lines) {
+  const start = lines.findIndex((line) => /^optionIds\[\d+\]$/.test(line));
+  if (start < 0) return [];
+  const optionIds = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = line.match(/^- (.*)$/);
+    if (!match) break;
+    optionIds.push(String(terminalAskValue(match[1])));
+  }
+  return optionIds;
 }
 
 /**
@@ -5390,6 +5765,18 @@ function parseSubagentToolResult(value) {
 
 function messageDetail(content) {
   return element("span", "agent-message-detail", content);
+}
+
+function modelMessageDetail(meta) {
+  const selectedModel = meta.requestedModel || meta.model;
+  const resolvedModel = meta.resolvedModel
+    || (meta.requestedModel && meta.model !== meta.requestedModel ? meta.model : null);
+  const detail = messageDetail(selectedModel);
+  if (resolvedModel && resolvedModel !== selectedModel) {
+    detail.title = `Resolved by provider as ${resolvedModel}`;
+    detail.setAttribute("aria-label", `${selectedModel}; resolved by provider as ${resolvedModel}`);
+  }
+  return detail;
 }
 
 function shortModelName(model) {

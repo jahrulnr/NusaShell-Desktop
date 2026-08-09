@@ -173,6 +173,22 @@ describe("AgentToolResult canonical model", () => {
   // --- projectModelToolResult ---
 
   describe("projectModelToolResult", () => {
+    it("projects gateway success data without transport envelope fields", () => {
+      const result = successToolResult("call-ask", "ask_question", {
+        ok: true,
+        data: {
+          via: "option",
+          answer: "As a JSON snapshot field",
+          optionIds: ["field_snapshot"],
+        },
+        meta: {},
+      });
+
+      expect(projectModelToolResult(result)).toBe(
+        "via=option\nanswer=\"As a JSON snapshot field\"\noptionIds[1]\n- field_snapshot",
+      );
+    });
+
     it("projects structured content as compact terminal-style output inside an untrusted boundary", () => {
       const result = successToolResult("call-1", "mcp_nusashell_files_read", { path: "/a", content: "hi" });
       const projected = projectModelToolResult(result);

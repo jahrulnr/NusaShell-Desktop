@@ -293,10 +293,40 @@ export function mapMessages(
 
 // --- HTTP helpers ---
 
-export function providerHeaders(api: ProviderApi, apiKey: string | undefined, stream: boolean): Record<string, string> {
+/** Identifies NusaShell to every inference endpoint without impersonating an SDK. */
+export const NUSASHELL_USER_AGENT = "NusaShell";
+
+const OPENROUTER_ATTRIBUTION_HEADERS = {
+  "http-referer": "https://github.com/jahrulnr/NusaShell",
+  "x-openrouter-title": "NusaShell",
+  "x-openrouter-categories": "personal-agent,programming-app",
+} as const;
+
+/**
+ * OpenRouter attribution must only be sent to its own API hosts. A custom
+ * OpenAI-compatible proxy may reject or forward unknown router-specific
+ * headers to an unrelated upstream.
+ */
+export function isOpenRouterApiUrl(baseUrl: string): boolean {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai");
+  } catch {
+    return false;
+  }
+}
+
+export function providerHeaders(
+  api: ProviderApi,
+  apiKey: string | undefined,
+  stream: boolean,
+  baseUrl?: string,
+): Record<string, string> {
   const base = {
     "content-type": "application/json",
     accept: stream ? "text/event-stream, application/json" : "application/json",
+    "user-agent": NUSASHELL_USER_AGENT,
+    ...(baseUrl && isOpenRouterApiUrl(baseUrl) ? OPENROUTER_ATTRIBUTION_HEADERS : {}),
   };
   if (api === "messages") {
     return { ...base, "anthropic-version": "2023-06-01", ...(apiKey ? { "x-api-key": apiKey } : {}) };

@@ -3,13 +3,15 @@ import { join } from "node:path";
 import type {
   AgentTurnTelemetry,
   ProviderRequestTelemetry,
+  SteeringTelemetry,
   TelemetryPort,
   TelemetryRecord,
 } from "@nusashell/application";
 
 const PROVIDER_REQUEST_PREFIX = "provider-requests";
 const AGENT_TURN_PREFIX = "agent-turns";
-const FILE_PATTERN = /^(provider-requests|agent-turns)-(\d{4}-\d{2}-\d{2})\.jsonl$/;
+const STEERING_PREFIX = "steering";
+const FILE_PATTERN = /^(provider-requests|agent-turns|steering)-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
 export interface JsonlTelemetryWriterOptions {
   /** Directory that holds the daily JSONL files (e.g. `{userData}/telemetry`). */
@@ -46,6 +48,10 @@ export class JsonlTelemetryWriter implements TelemetryPort {
 
   recordTurn(record: AgentTurnTelemetry): void {
     this.enqueue(AGENT_TURN_PREFIX, record);
+  }
+
+  recordSteering(record: SteeringTelemetry): void {
+    this.enqueue(STEERING_PREFIX, record);
   }
 
   /** Await all pending writes. Primarily for tests and graceful shutdown. */

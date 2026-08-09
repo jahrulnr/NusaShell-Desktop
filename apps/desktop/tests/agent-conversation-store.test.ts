@@ -5,6 +5,64 @@ import { describe, expect, it } from "vitest";
 import { AgentConversationStore } from "../src/main/agent-conversation-store.js";
 
 describe("AgentConversationStore", () => {
+  it("persists runtime hydration outside visible message history", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nusashell-conversations-hydration-"));
+    const path = join(root, "agent-conversations.json");
+    const first = new AgentConversationStore(path, undefined, () => "conv-hydration");
+    const conversation = await first.create();
+    await first.appendMessage(conversation.id, { role: "user", content: "hello" });
+    await first.saveRuntimeHydration(conversation.id, {
+      traceId: "trace-first",
+      updatedAt: "2026-08-09T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "hydrate:first:0", name: "runtime_context", args: {} }],
+        },
+        {
+          role: "tool",
+          toolCallId: "hydrate:first:0",
+          name: "runtime_context",
+          content: '{"workspace":"/workspace"}',
+        },
+      ],
+    });
+
+    const second = new AgentConversationStore(path);
+    const restored = await second.get(conversation.id);
+
+    expect(restored?.messages).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+    ]);
+    expect(restored?.runtimeHydration).toMatchObject({
+      traceId: "trace-first",
+      messages: [
+        expect.objectContaining({ role: "assistant" }),
+        expect.objectContaining({ role: "tool", name: "runtime_context" }),
+      ],
+    });
+    expect(await readdir(join(root, "conversations"))).toContain("conv-hydration.runtime.json");
+  });
+
+  it("invalidates hidden hydration when the workspace changes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nusashell-conversations-hydration-workspace-"));
+    const store = new AgentConversationStore(join(root, "agent-conversations.json"), undefined, () => "conv-workspace-hydration");
+    const conversation = await store.create();
+    await store.saveRuntimeHydration(conversation.id, {
+      traceId: "trace-old",
+      updatedAt: "2026-08-09T00:00:00.000Z",
+      messages: [
+        { role: "assistant", content: "", toolCalls: [{ id: "hydrate:old:0", name: "runtime_context", args: {} }] },
+        { role: "tool", toolCallId: "hydrate:old:0", name: "runtime_context", content: '{"workspace":"/old"}' },
+      ],
+    });
+
+    const updated = await store.setWorkspace(conversation.id, "/new");
+    expect(updated.runtimeHydration).toBeUndefined();
+    expect(await readdir(join(root, "conversations"))).not.toContain("conv-workspace-hydration.runtime.json");
+  });
+
   it("allocates immutable message identities and monotonic positions under an identical clock", async () => {
     const root = await mkdtemp(join(tmpdir(), "nusashell-conversations-positioning-"));
     const path = join(root, "agent-conversations.json");
@@ -96,6 +154,35 @@ describe("AgentConversationStore", () => {
       "1:first",
       "2:answer to first",
       "3:newer",
+    ]);
+  });
+
+  it("atomically seals a steered assistant-user-assistant transcript", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nusashell-conversations-steered-"));
+    const path = join(root, "agent-conversations.json");
+    let messageId = 0;
+    const store = new AgentConversationStore(
+      path,
+      () => new Date("2026-08-09T09:00:00.000Z"),
+      () => "conv-steered",
+      undefined,
+      () => `msg_${++messageId}`,
+    );
+    const conversation = await store.create();
+    await store.appendMessage(conversation.id, { role: "user", content: "Start" });
+    await store.reserveAssistant(conversation.id, "trace-steered");
+
+    const sealed = await store.sealAssistantTranscript(conversation.id, "trace-steered", [
+      { role: "assistant", content: "Original work", traceId: "trace-steered" },
+      { role: "user", content: "Change direction" },
+      { role: "assistant", content: "Corrected work", traceId: "trace-steered" },
+    ]);
+
+    expect(sealed.messages.map(({ role, content, position }) => ({ role, content, position }))).toEqual([
+      { role: "user", content: "Start", position: 1 },
+      { role: "assistant", content: "Original work", position: 2 },
+      { role: "user", content: "Change direction", position: 3 },
+      { role: "assistant", content: "Corrected work", position: 4 },
     ]);
   });
 

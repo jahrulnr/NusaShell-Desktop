@@ -1,3 +1,7 @@
+// Pure domain tests for the model capability policy (ticket #82, Klaster C).
+// Ported from packages/infrastructure/tests/model-capability-policy.test.ts —
+// the policy moved to domain; infrastructure must stay a pure adapter layer.
+
 import { describe, expect, it } from "vitest";
 import {
   heuristicModelSupportsEffort,

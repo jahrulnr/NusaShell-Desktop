@@ -453,7 +453,20 @@ export function composerTextareaSize({
 export function buildAgentContext(conversation) {
   const checkpoint = conversation?.checkpoint;
   const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
-  if (!checkpoint?.summary) return messages.filter((m) => m.status !== "interrupted").flatMap(toProviderMessages);
+  const hydration = Array.isArray(conversation?.runtimeHydration?.messages)
+    ? conversation.runtimeHydration.messages
+    : [];
+  if (!checkpoint?.summary) {
+    const providerMessages = messages.filter((m) => m.status !== "interrupted").flatMap(toProviderMessages);
+    if (hydration.length === 0) return providerMessages;
+    const firstUser = providerMessages.findIndex((message) => message.role === "user");
+    if (firstUser < 0) return providerMessages;
+    return [
+      ...providerMessages.slice(0, firstUser + 1),
+      ...hydration,
+      ...providerMessages.slice(firstUser + 1),
+    ];
+  }
 
   const residual = messages.slice(checkpoint.compactedMessageCount).filter((m) => m.status !== "interrupted").flatMap(toProviderMessages);
 
@@ -463,6 +476,7 @@ export function buildAgentContext(conversation) {
     return [
       ...retainedUsers,
       { role: "user", content: checkpoint.summary },
+      ...hydration,
       ...residual,
     ];
   }
@@ -470,6 +484,7 @@ export function buildAgentContext(conversation) {
   // Legacy: system summary + residual slice.
   return [
     { role: "system", content: `Conversation summary:\n${checkpoint.summary}` },
+    ...hydration,
     ...residual,
   ];
 }
@@ -490,8 +505,10 @@ export function hasToolResumeSnapshot(message) {
   if (!Array.isArray(message.resumeMessages) || message.resumeMessages.length === 0) return false;
   return message.resumeMessages.some((entry) => {
     if (!entry || typeof entry !== "object") return false;
-    if (entry.role === "tool") return true;
-    if (entry.role === "assistant" && Array.isArray(entry.toolCalls) && entry.toolCalls.length > 0) return true;
+    if (entry.role === "tool") return !String(entry.toolCallId ?? "").startsWith("hydrate:");
+    if (entry.role === "assistant" && Array.isArray(entry.toolCalls) && entry.toolCalls.length > 0) {
+      return entry.toolCalls.some((call) => !String(call?.id ?? "").startsWith("hydrate:"));
+    }
     return false;
   });
 }

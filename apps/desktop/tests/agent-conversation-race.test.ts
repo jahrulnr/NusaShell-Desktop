@@ -163,4 +163,22 @@ describe("AgentConversationController — stale-snapshot race (ticket #47)", () 
     expect(document.querySelectorAll("#agent-thread .agent-pending")).toHaveLength(0);
     expect(document.querySelector("#agent-thread")?.textContent).toContain("completed answer");
   });
+
+  it("keeps the interrupted assistant visible while its reserved resume slot is running", () => {
+    const controller = new AgentConversationController({} as never);
+    controller.conversation = { id: "c1", kind: "agent", messages: [] } as never;
+    controller.activeId = "c1";
+    const interrupted = controller.appendMessage("assistant", "Partial answer stays visible", {
+      status: "interrupted",
+      traceId: "trace-before-resume",
+    });
+    interrupted!.dataset.messageId = "msg-resume";
+
+    const pending = controller.createStreamingMessage({ messageId: "msg-resume", position: 2, revision: 1 });
+
+    expect(pending).toBe(interrupted);
+    expect(document.querySelectorAll("#agent-thread article.agent-message")).toHaveLength(1);
+    expect(pending?.textContent).toContain("Partial answer stays visible");
+    expect(pending?.classList.contains("agent-pending")).toBe(true);
+  });
 });

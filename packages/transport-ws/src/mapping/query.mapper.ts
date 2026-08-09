@@ -20,6 +20,7 @@ import type {
   GetPipelineRunQuery,
   GetActiveTurnQuery,
   ToolJobListQuery,
+  TelemetryGetReportQuery,
 } from "@nusashell/application";
 
 export function mapToQuery(
@@ -45,6 +46,7 @@ export function mapToQuery(
   | GetPipelineRunQuery
   | GetActiveTurnQuery
   | ToolJobListQuery
+  | TelemetryGetReportQuery
   | null {
   switch (request.method) {
     case "plugin.list":
@@ -137,6 +139,13 @@ export function mapToQuery(
         kind: "tool-job-list",
         conversationId: request.payload.conversationId,
       } as ToolJobListQuery;
+    case "telemetry.get_report": {
+      const payload = request.payload as { recentLimit?: number };
+      return {
+        kind: "telemetry.get-report",
+        ...(payload.recentLimit !== undefined ? { recentLimit: payload.recentLimit } : {}),
+      } as TelemetryGetReportQuery;
+    }
     default:
       return null;
   }

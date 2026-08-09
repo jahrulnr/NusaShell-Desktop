@@ -98,6 +98,9 @@ export class LearningController {
           this.sigmaGraph?.resize();
           this.sigmaGraph?.resetView();
         });
+      } else {
+        this.sigmaGraph?.destroy();
+        this.sigmaGraph = null;
       }
     }
 
@@ -189,6 +192,7 @@ export class LearningController {
       if (nodes.length === 0) {
         this.els.constellationMeta.textContent = "No nodes";
         this.sigmaGraph?.destroy();
+        this.sigmaGraph = null;
         return;
       }
 
@@ -198,6 +202,7 @@ export class LearningController {
       // container. Mount again when the tab becomes visible.
       if (this.activeTab !== "connections") {
         this.sigmaGraph?.destroy();
+        this.sigmaGraph = null;
         return;
       }
 

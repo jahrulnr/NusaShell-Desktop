@@ -1,7 +1,7 @@
 {
   "name": "@nusashell/desktop",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.7.0",
   "author": "Jahrulnr",
   "type": "module",
   "main": ".vite/build/main.cjs",
@@ -25,6 +25,7 @@
     "@nusashell/application": "workspace:*",
     "@nusashell/backend": "workspace:*",
     "@nusashell/contracts": "workspace:*",
+    "@nusashell/domain": "workspace:*",
     "@nusashell/transport-ws": "workspace:*",
     "@sigma/edge-curve": "^3.1.0",
     "better-sqlite3": "^13.0.1",

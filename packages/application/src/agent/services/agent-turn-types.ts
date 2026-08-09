@@ -11,26 +11,18 @@ import type { AgentProvider } from "../ports/agent-provider.port.js";
 import type { LoggerPort } from "../../plugin/ports/logger.port.js";
 import type { AutoContinueDecision } from "./auto-continue-policy.js";
 
-export const MAX_REPEATED_TOOL_CALLS = 50;
-export const DEFAULT_MAX_TOOL_ROUNDS = 50;
-/** Absolute ceiling for settings/env/API validation (complex agentic runs). */
-export const MAX_TOOL_ROUNDS_CAP = 10_000;
-export const DEFAULT_SOFT_RECOVER_ATTEMPTS = 1;
-export const MAX_SOFT_RECOVER_ATTEMPTS = 3;
-export const DEFAULT_MAX_CONCURRENT_TOOL_CALLS = 8;
-export const MAX_CONCURRENT_TOOL_CALLS_CAP = 32;
-
-/**
- * Tools that must run alone, in order (interactive barriers).
- * `ask_question` blocks the turn for user input and cannot overlap siblings.
- * `mcp_register` / `mcp_unregister` also wait on nested confirmation asks.
- */
-export const BARRIER_TOOLS: ReadonlySet<string> = new Set([
-  "ask_question",
-  "mcp_register",
-  "mcp_unregister",
-  "async_wait",
-]);
+// Tool-execution constants (ticket #80, Klaster A) moved to the domain layer;
+// re-exported here so existing application imports keep resolving.
+export {
+  MAX_REPEATED_TOOL_CALLS,
+  DEFAULT_MAX_TOOL_ROUNDS,
+  MAX_TOOL_ROUNDS_CAP,
+  DEFAULT_SOFT_RECOVER_ATTEMPTS,
+  MAX_SOFT_RECOVER_ATTEMPTS,
+  DEFAULT_MAX_CONCURRENT_TOOL_CALLS,
+  MAX_CONCURRENT_TOOL_CALLS_CAP,
+  BARRIER_TOOLS,
+} from "@nusashell/domain";
 
 export interface RunAgentTurnInput {
   readonly messages: readonly AgentMessage[];
@@ -58,11 +50,19 @@ export interface RunAgentTurnInput {
    */
   readonly systemContext?: readonly AgentMessage[];
   /**
-   * Build an ephemeral synthetic hydration transcript (assistant toolCalls +
-   * tool results) for post-compaction continuation. Assembled by the handler
-   * from read-only runtime snapshots; never executes the gateway.
+   * Build a synthetic hydration transcript (assistant toolCalls + tool
+   * results) for post-compaction continuation. Assembled by the handler from
+   * read-only runtime snapshots; never executes the gateway. The desktop keeps
+   * the latest complete graph as a hidden conversation checkpoint.
    */
   readonly buildHydrationTranscript?: () => Promise<readonly AgentMessage[]>;
+  /**
+   * Consume a runtime change (for example, a live workspace switch) and build
+   * its synthetic hydration transcript. The runner calls this only at safe
+   * provider/tool round boundaries. The desktop replaces the hidden room
+   * checkpoint with the latest complete graph when the turn seals.
+   */
+  readonly consumeRuntimeUpdate?: () => Promise<readonly AgentMessage[]>;
   /**
    * Builds the TODO block to seal into the compaction summary user message
    * (Option B: user summary + todo -> assistant toolCalls -> tool results).
@@ -104,12 +104,22 @@ export type AgentTurnStep =
   | { readonly type: "tool_calls"; readonly calls: readonly AgentToolExecution[]; readonly model?: string; readonly providerId?: string }
   | { readonly type: "text"; readonly content: string; readonly model?: string; readonly providerId?: string };
 
+export interface AgentSteerBoundary {
+  /** Step/tool offsets immediately before this user steer entered the graph. */
+  readonly stepOffset: number;
+  readonly toolCallOffset: number;
+  readonly userMessages: readonly Extract<AgentMessage, { role: "user" }>[];
+}
+
 export interface AgentTurnResult {
   readonly traceId: string;
   readonly text: string;
   readonly rounds: number;
   readonly toolCalls: readonly AgentToolExecution[];
   readonly steps?: readonly AgentTurnStep[];
+  /** Route/model identifier selected by the caller before provider resolution. */
+  readonly requestedModel?: string;
+  /** Canonical/upstream model identifier reported by the provider response. */
   readonly model?: string;
   readonly providerId?: string;
   readonly api?: "chat" | "responses" | "messages";
@@ -117,6 +127,7 @@ export interface AgentTurnResult {
   readonly usage?: AgentTokenUsage;
   readonly compaction?: AgentCompactionCheckpoint;
   readonly messages?: readonly AgentMessage[];
+  readonly steerBoundaries?: readonly AgentSteerBoundary[];
   /**
    * Outer multi-turn auto-continue decision. Attached only on a successful
    * complete turn when a conversation is bound and a todo port is configured;
@@ -153,6 +164,7 @@ export interface AgentTurnPartial {
   readonly toolCalls: readonly AgentToolExecution[];
   readonly steps: readonly AgentTurnStep[];
   readonly messages: readonly AgentMessage[];
+  readonly steerBoundaries?: readonly AgentSteerBoundary[];
   readonly model?: string;
   readonly providerId?: string;
   readonly api?: "chat" | "responses" | "messages";

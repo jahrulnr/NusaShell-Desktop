@@ -141,6 +141,34 @@ describe("AgentConversationController — subagent stream pane", () => {
   });
 });
 
+describe("AgentConversationController — ask-question cards", () => {
+  beforeEach(() => installDom());
+
+  it("does not treat the terminal tool envelope as a custom answer", () => {
+    const controller = new AgentConversationController({} as never);
+    const card = controller.createAskCard("call-ask", {
+      question: "Choose a runtime context format",
+      options: [{ id: "field_snapshot", label: "As a JSON snapshot field" }],
+      allow_free_text: true,
+    }, {
+      sealed: true,
+      output: [
+        "status=success",
+        "truncated=false",
+        "",
+        "via=option",
+        "answer=\"As a JSON snapshot field\"",
+        "optionIds[1]",
+        "- field_snapshot",
+      ].join("\n"),
+    });
+
+    expect(card.querySelector(".agent-ask-textarea")?.value).toBe("");
+    expect(card.querySelector(".agent-ask-custom")?.classList.contains("is-active")).toBe(false);
+    expect(card.querySelector(".agent-ask-answer")?.textContent).toBe("Answer: As a JSON snapshot field");
+  });
+});
+
 describe("AgentConversationController — conversation-scoped composer state", () => {
   beforeEach(() => installDom());
 
@@ -188,7 +216,7 @@ describe("AgentConversationController — conversation-scoped composer state", (
     expect(stop.classList.contains("is-stopping")).toBe(false);
   });
 
-  it("keeps the stop state when the active conversation owns the turn", () => {
+  it("keeps the textarea draftable and Stop visible when the active conversation owns the turn", () => {
     const controller = new AgentConversationController({} as never);
     const input = document.querySelector<HTMLInputElement>("#agent-input")!;
     const send = document.querySelector<HTMLButtonElement>("#agent-send-btn")!;
@@ -198,7 +226,7 @@ describe("AgentConversationController — conversation-scoped composer state", (
     controller.pendingTurnConversations.add("conversation-a");
     controller.resetComposerForConversation("conversation-a");
 
-    expect(input.disabled).toBe(true);
+    expect(input.disabled).toBe(false);
     expect(send.disabled).toBe(true);
     expect(stop.hidden).toBe(false);
   });

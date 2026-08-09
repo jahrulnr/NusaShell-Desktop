@@ -292,8 +292,10 @@ export class LearningSigmaGraph {
         if ((data.timestamp ?? 0) > cutoff) next.hidden = true;
         if (active && !hood.nodes.has(id)) next.color = "#29313c";
         if (active && hood.nodes.has(id)) next.zIndex = id === active ? 4 : 3;
-        if (!smallGraph && !active && this.cameraRatio > ZOOM_FAR && degree < 2) next.hidden = true;
-        if (!smallGraph && !active && this.cameraRatio > ZOOM_MID && degree < 1) next.hidden = true;
+        // Isolated nodes are valid Learning data (especially memory entries and
+        // skills without related_skills). Keep them visible at every zoom; the
+        // compact-orphan layout gives them a stable place around the graph.
+        if (!smallGraph && !active && this.cameraRatio > ZOOM_FAR && degree === 1) next.hidden = true;
         if (id === active) { next.forceLabel = true; next.highlighted = true; }
         return next;
       });

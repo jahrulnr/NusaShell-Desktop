@@ -7,45 +7,29 @@ import type {
   SkillReadResult,
 } from "../skill/index.js";
 import { latestActivityAt } from "../skill/index.js";
-import type { MemoryStorePort, MemorySnapshot, MemoryEntry, MemoryTarget } from "../memory/ports/memory-store.port.js";
+import type { MemoryStorePort, MemorySnapshot, MemoryTarget } from "../memory/ports/memory-store.port.js";
+// Pure graph primitives are domain-owned (ticket #84, Klaster E).
+import {
+  buildGraphStats,
+  buildMemoryNode,
+  categoryForSkillId,
+  clusterNodes,
+  parseMemoryNodeId,
+  parseRelatedSkills,
+  truncate,
+  type LearningNode,
+  type LearningEdge,
+  type LearningGraph,
+} from "@nusashell/domain";
 
-export interface LearningNode {
-  readonly id: string;
-  readonly label: string;
-  readonly kind: "skill" | "memory";
-  readonly timestamp: number | null;
-  readonly category: string;
-  readonly useCount: number;
-  readonly state: "active" | "stale" | "archived";
-  readonly createdBy: "agent" | "user" | "builtin";
-  readonly pinned: boolean;
-  readonly memorySource?: "memory" | "user";
-}
-
-export interface LearningEdge {
-  readonly source: string;
-  readonly target: string;
-}
-
-export interface LearningCluster {
-  readonly category: string;
-  readonly count: number;
-}
-
-export interface LearningGraphStats {
-  readonly skills: number;
-  readonly learnedSkills: number;
-  readonly memoryNodes: number;
-  readonly agentCreated: number;
-  readonly used: number;
-}
-
-export interface LearningGraph {
-  readonly nodes: readonly LearningNode[];
-  readonly edges: readonly LearningEdge[];
-  readonly clusters: readonly LearningCluster[];
-  readonly stats: LearningGraphStats;
-}
+export type {
+  LearningNode,
+  LearningEdge,
+  LearningCluster,
+  LearningGraphStats,
+  LearningGraph,
+} from "@nusashell/domain";
+export { parseMemoryNodeId, parseRelatedSkills } from "@nusashell/domain";
 
 export interface LearningNodeDetail {
   readonly id: string;
@@ -113,7 +97,7 @@ export class LearningGraphService {
         label: skill.name,
         kind: "skill",
         timestamp,
-        category: this.skillCategory(skill),
+        category: categoryForSkillId(skill.id),
         useCount,
         state,
         createdBy: origin,
@@ -125,8 +109,8 @@ export class LearningGraphService {
     this.appendMemoryNodes(nodes, memorySnapshot);
 
     const edges = await this.buildEdges(skills, skillIds);
-    const clusters = this.buildClusters(nodes);
-    const stats = this.buildStats(nodes);
+    const clusters = clusterNodes(nodes);
+    const stats = buildGraphStats(nodes);
 
     return { nodes, edges, clusters, stats };
   }
@@ -165,43 +149,16 @@ export class LearningGraphService {
     return new Date(skill.updatedAt).getTime();
   }
 
-  private skillCategory(skill: SkillSummary): string {
-    const parts = skill.id.split("/");
-    return parts.length > 1 ? parts[0]! : "general";
-  }
-
   private appendMemoryNodes(nodes: LearningNode[], snapshot: MemorySnapshot): void {
     let globalIndex = 0;
     for (const entry of snapshot.memory) {
-      nodes.push(this.makeMemoryNode(entry, "memory", globalIndex));
+      nodes.push(buildMemoryNode(entry, "memory", globalIndex));
       globalIndex++;
     }
     for (const entry of snapshot.user) {
-      nodes.push(this.makeMemoryNode(entry, "user", globalIndex));
+      nodes.push(buildMemoryNode(entry, "user", globalIndex));
       globalIndex++;
     }
-  }
-
-  private makeMemoryNode(
-    entry: MemoryEntry,
-    source: MemoryTarget,
-    index: number,
-  ): LearningNode {
-    const id = `memory:${source}:${index}`;
-    const label = entry.text.length > 60 ? `${entry.text.slice(0, 57)}…` : entry.text;
-    const timestamp = entry.createdAt ? new Date(entry.createdAt).getTime() : null;
-    return {
-      id,
-      label,
-      kind: "memory",
-      timestamp: timestamp !== null && !Number.isNaN(timestamp) ? timestamp : null,
-      category: source === "memory" ? "memory" : "user",
-      useCount: 0,
-      state: "active",
-      createdBy: "agent",
-      pinned: false,
-      memorySource: source,
-    };
   }
 
   private async buildEdges(
@@ -229,39 +186,6 @@ export class LearningGraphService {
     } catch {
       return [];
     }
-  }
-
-  private buildClusters(nodes: readonly LearningNode[]): LearningCluster[] {
-    const counts = new Map<string, number>();
-    for (const node of nodes) {
-      counts.set(node.category, (counts.get(node.category) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .map(([category, count]) => ({ category, count }))
-      .sort((a, b) => b.count - a.count);
-  }
-
-  private buildStats(nodes: readonly LearningNode[]): LearningGraphStats {
-    let skills = 0;
-    let learnedSkills = 0;
-    let memoryNodes = 0;
-    let agentCreated = 0;
-    let used = 0;
-
-    for (const node of nodes) {
-      if (node.kind === "skill") {
-        skills++;
-        if (node.createdBy === "agent") {
-          learnedSkills++;
-          agentCreated++;
-        }
-        if (node.useCount > 0) used++;
-      } else {
-        memoryNodes++;
-      }
-    }
-
-    return { skills, learnedSkills, memoryNodes, agentCreated, used };
   }
 
   private async getSkillNodeDetail(skillId: string): Promise<LearningNodeDetail> {
@@ -400,48 +324,6 @@ export class LearningGraphService {
       return { ok: false, error: msg, code: "remove_failed" };
     }
   }
-}
-
-export function parseMemoryNodeId(nodeId: string): { source: MemoryTarget; index: number } | null {
-  const parts = nodeId.split(":");
-  if (parts.length !== 3 || parts[0] !== "memory") return null;
-  const source = parts[1] as MemoryTarget;
-  if (source !== "memory" && source !== "user") return null;
-  const index = Number(parts[2]);
-  if (!Number.isInteger(index) || index < 0) return null;
-  return { source, index };
-}
-
-export function parseRelatedSkills(content: string): string[] {
-  const fm = extractFrontmatter(content);
-  if (!fm) return [];
-  const match = fm.match(/^related_skills:\s*\r?\n((?:\s*-\s+.+\r?\n?)+)/m);
-  if (!match) {
-    const inline = fm.match(/^related_skills:\s*\[(.+?)\]/m);
-    if (!inline) return [];
-    return inline[1]!
-      .split(",")
-      .map((s) => s.trim().replace(/^["']|["']$/g, ""))
-      .filter((s) => s.length > 0);
-  }
-  const lines = match[1]!.split(/\r?\n/).filter((l) => l.trim().startsWith("-"));
-  return lines
-    .map((l) => l.replace(/^\s*-\s*/, "").trim().replace(/^["']|["']$/g, ""))
-    .filter((s) => s.length > 0);
-}
-
-function extractFrontmatter(content: string): string | null {
-  if (!content.startsWith("---")) return null;
-  const endMatch = content.slice(3).match(/\r?\n---/);
-  if (!endMatch) return null;
-  const end = endMatch.index! + 3;
-  return content.slice(3, end);
-  if (end === -1) return null;
-  return content.slice(3, end);
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function errorMessage(err: unknown): string {

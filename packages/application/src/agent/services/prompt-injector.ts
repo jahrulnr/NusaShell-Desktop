@@ -31,33 +31,24 @@ const STATIC_PROMPT_NAMES = ["system", "mcp-tools"];
  *    system.md -> mcp-tools.md
  * 2. A constant marker (SYSTEM_PREFIX_END_MARKER) that anchors the boundary.
  * 3. Dynamic tail (assembled per turn):
- *    subagent -> user prompt -> hidden runtime-context checkpoint
- *    (MCP, skills, TODO).
+ *    user prompt -> hidden runtime-context checkpoint (MCP, skills, TODO).
  *
- * Runtime facts such as date, workspace, memory, skills, and MCP catalog are
- * supplied by the ephemeral hydration transcript, never copied into the
- * stable prefix.
+ * Runtime facts such as date, workspace, memory, skills, MCP catalog, and
+ * subagent routing/delegation guide are supplied by the hidden hydration
+ * transcript (runtime_context snapshot), never copied into the stable prefix.
  */
-export const SYSTEM_PREFIX_END_MARKER =
-  "=== STABLE SYSTEM PREFIX END / DYNAMIC TAIL BEGIN ===";
-
-/** Calendar date on the host machine for this turn's instant. */
-export function stableCurrentDate(now: Date = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-export function machineCurrentTime(now: Date = new Date()): string {
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-}
-
-export function machineTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local machine time";
-}
+// The stable-boundary marker + time-var formatters are domain-owned
+// (ticket #80, Klaster A).
+export {
+  SYSTEM_PREFIX_END_MARKER,
+  stableCurrentDate,
+  machineCurrentTime,
+  machineTimeZone,
+} from "@nusashell/domain";
 
 export interface PromptInjectionSummary {
   readonly totalSystemMessages: number;
   readonly totalSystemChars: number;
-  readonly hasSubagentPrompt: boolean;
   readonly hasMemory: boolean;
   readonly hasTodo: boolean;
   readonly hasUserPrompt: boolean;
@@ -88,7 +79,6 @@ export function injectPrompts(
   messages: readonly AgentMessage[],
   userPrompt?: string,
   memoryPrompt?: string,
-  subagentPrompt?: string,
   todoPrompt?: string,
   skillsCatalogPrompt?: string,
   continuePrompt?: string,
@@ -98,7 +88,6 @@ export function injectPrompts(
   );
   const out: AgentMessage[] = [];
   let staticChars = 0;
-  let subagentChars = 0;
   let userPromptChars = 0;
   let memoryChars = 0;
   let stableSystemMessages = 0;
@@ -112,13 +101,6 @@ export function injectPrompts(
   // Runtime state must not poison the cacheable system prefix. It is attached
   // as one hidden user checkpoint below after the dynamic system tail.
   const hasSkillsCatalog = Boolean(skillsCatalogPrompt);
-
-  const hasSubagentPrompt = Boolean(subagentPrompt);
-  if (subagentPrompt) {
-    const rendered = applyVars(subagentPrompt, vars);
-    out.push({ role: "system", content: rendered });
-    subagentChars += rendered.length;
-  }
 
   const hasUserPrompt = Boolean(userPrompt);
   if (userPrompt) {
@@ -153,14 +135,13 @@ export function injectPrompts(
   }
 
   const totalSystemMessages = out.filter((m) => m.role === "system").length;
-  const totalSystemChars = staticChars + subagentChars + userPromptChars + memoryChars;
+  const totalSystemChars = staticChars + userPromptChars + memoryChars;
   const availableSubagents = Boolean(vars.availableSubagents && vars.availableSubagents.trim());
   const defaultSubagent = Boolean(vars.defaultSubagent && vars.defaultSubagent.trim());
 
   const summary: PromptInjectionSummary = {
     totalSystemMessages,
     totalSystemChars,
-    hasSubagentPrompt,
     hasMemory,
     hasTodo,
     hasUserPrompt,
@@ -171,7 +152,7 @@ export function injectPrompts(
       return (
         `prompt.injection traceId=${traceId} systemMessages=${totalSystemMessages}` +
         ` systemChars=${totalSystemChars}` +
-        ` hasSubagent=${hasSubagentPrompt} hasMemory=${hasMemory} hasTodo=${hasTodo} hasUserPrompt=${hasUserPrompt}` +
+        ` hasMemory=${hasMemory} hasTodo=${hasTodo} hasUserPrompt=${hasUserPrompt}` +
         ` hasSkillsCatalog=${hasSkillsCatalog} hasContinue=${hasContinue}` +
         ` subagentVars.available=${availableSubagents} subagentVars.default=${defaultSubagent}`
       );

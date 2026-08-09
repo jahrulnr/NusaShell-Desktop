@@ -35,6 +35,11 @@ Derived metrics: fresh input = `inputTokens - cachedInputTokens`; cache hit rate
 - **Provider usage is the source of truth.** Numbers come from the provider
   `usage` block; every usage record is tagged `source: "provider"` (estimates,
   if ever added, must be labeled `estimated` and never silently mixed).
+- **Completion-steering events are metadata-only.** The `steering` record tracks
+  when the desktop auto-starts a follow-up turn after a background job finishes
+  (`outcome: "fired"`) or decides not to (`outcome: "skipped"` + `reason`:
+  `not-idle` / `composer-busy` / `other`). It never contains the steer prompt or
+  job output — only counts and a timestamp.
 - **Fire-and-forget.** The sink never throws and never blocks a turn: writes are
   serialized on an async queue and all failures are swallowed (optionally
   observed for logging). A telemetry failure can never fail a user turn.
@@ -63,11 +68,28 @@ UTC day:
 ```text
 {userData}/telemetry/provider-requests-YYYY-MM-DD.jsonl
 {userData}/telemetry/agent-turns-YYYY-MM-DD.jsonl
+{userData}/telemetry/steering-YYYY-MM-DD.jsonl
 ```
 
 Files older than the retention window (default 30 days) are pruned lazily on the
 first write. A future phase may add a SQLite projection for in-app analytics; the
 JSONL remains the durable spine.
+
+## Read path (query bus)
+
+A read-only `TelemetryQueryPort` (`JsonlTelemetryReader`) exposes the JSONL
+spine to the renderer via the `telemetry.get_report` query. It aggregates:
+
+turn counts by status, cache hit rate, fresh-token ratio, provider requests per
+turn (median/p95 rounds), fresh tokens per completed turn, failure-waste ratio,
+recent turns, a zero-filled seven-day UTC turn series derived from the complete
+retained record set, and a steering summary (`fired` / `skipped` by reason). A
+request's `recentLimit` caps only the detail list; it never limits raw records
+used for aggregate metrics. The port is fail-soft: a missing directory,
+corrupt lines, or I/O errors yield an empty
+result, never a query failure. `costPerCompletedTurn` stays `null` until cost
+passthrough lands. Renderer writes are intentionally absent — the renderer only
+reads, never appends.
 
 ## Configuration
 
@@ -100,7 +122,7 @@ telemetry `cost` field and this metric.
 
 ## Scope
 
-This is Phase 1 (measurement). Prompt-composition segment breakdowns, an in-app
-**AI Usage** analytics view, and adaptive optimization (cache-aware assembly,
-dynamic context budgets, model escalation) are later phases and are intentionally
-out of scope here — optimization should follow evidence, not precede it.
+This is Phase 1 (measurement), including the local read-only **Usage** analytics
+view. Prompt-composition segment breakdowns and adaptive optimization
+(cache-aware assembly, dynamic context budgets, model escalation) remain later
+phases — optimization should follow evidence, not precede it.

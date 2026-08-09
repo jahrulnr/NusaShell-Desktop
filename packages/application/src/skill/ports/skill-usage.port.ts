@@ -1,4 +1,8 @@
-export type SkillState = "active" | "stale" | "archived";
+// SkillState and the activity-time rule are domain-owned (ticket #84,
+// Klaster E) so the curator policy and the usage port share one source.
+import type { SkillState } from "@nusashell/domain";
+export type { SkillState } from "@nusashell/domain";
+export { latestActivityAt } from "@nusashell/domain";
 
 export type UsageBumpKind = "use" | "view" | "patch";
 
@@ -23,13 +27,4 @@ export interface SkillUsagePort {
   setState(skillId: string, state: SkillState): Promise<void>;
   setPinned(skillId: string, pinned: boolean): Promise<void>;
   clear(skillId: string): Promise<void>;
-}
-
-export function latestActivityAt(record: SkillUsageRecord): string {
-  const candidates = [record.lastUsedAt, record.lastViewedAt, record.lastPatchedAt]
-    .filter((value): value is string => value !== null);
-  if (candidates.length === 0) return record.createdAt;
-  return candidates.reduce((latest, current) =>
-    current > latest ? current : latest,
-  );
 }

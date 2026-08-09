@@ -177,6 +177,8 @@ export interface Container {
   readonly agentToolGateway: import("./composers/agent-runtime.js").AgentRuntimeParts["agentToolGateway"];
   readonly agentTurnCoordinator: import("./composers/agent-runtime.js").AgentRuntimeParts["agentTurnCoordinator"];
   readonly conversationTodos: ConversationTodoPort;
+  /** Applies a workspace picker change to a live agent turn, if one exists. */
+  updateAgentWorkspace(conversationId: string, workspace: string | undefined): boolean;
   readonly db?: SqliteDatabase | undefined;
   readonly logger: Logger;
   configureAi(settings: {
@@ -282,6 +284,7 @@ export function createContainer(options: ContainerOptions): Container {
     agentToolGateway: agent.agentToolGateway,
     agentTurnCoordinator: agent.agentTurnCoordinator,
     conversationTodos: agent.conversationTodos,
+    updateAgentWorkspace: buses.updateAgentWorkspace,
     db: plugin.db,
     logger,
     configureAi: (settings) => aiConfiguration.configureAi(settings),

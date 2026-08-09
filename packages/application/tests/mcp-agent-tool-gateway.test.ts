@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
-import { McpAgentToolGateway } from "../src/index.js";
+import { AsyncToolRuntime, McpAgentToolGateway } from "../src/index.js";
 import type {
   DocContent,
   DocsIndexPort,
@@ -32,6 +32,39 @@ const fakeRuntime = {
 };
 
 describe("McpAgentToolGateway", () => {
+  it("keeps an async MCP job alive when its spawning turn is cancelled", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const runtime = {
+      ...fakeRuntime,
+      listPlugins: async () => [{ pluginId: "nusashell.notes", name: "Notes", state: "running", enabled: true }],
+      callTool: async (_pluginId: unknown, _request: unknown, signal?: AbortSignal) => {
+        receivedSignal = signal;
+        return new Promise(() => {});
+      },
+    };
+    const gateway = new McpAgentToolGateway(runtime as never);
+    const asyncRuntime = new AsyncToolRuntime();
+    gateway.bindAsyncToolRuntime(asyncRuntime);
+    gateway.beginTurn("turn-async", { conversationId: "conv-async" });
+    await gateway.listTools([], "turn-async");
+    const turnController = new AbortController();
+
+    const started = await gateway.execute(
+      "async_run",
+      { tool: "mcp_nusashell_notes_createNote", args: { text: "hello" } },
+      "call-async",
+      "turn-async",
+      undefined,
+      { signal: turnController.signal },
+    ) as { handleId: string };
+    await vi.waitFor(() => expect(receivedSignal).toBeDefined());
+
+    turnController.abort();
+    expect(receivedSignal?.aborted).toBe(false);
+    expect(asyncRuntime.peek(started.handleId)?.status).toBe("running");
+    asyncRuntime.dispose();
+  });
+
   it("exposes bounded MCP discovery and one prompt/resource context meta-tool", async () => {
     const gateway = new McpAgentToolGateway(fakeRuntime as never);
     gateway.beginTurn("turn-1");
@@ -1451,4 +1484,3 @@ describe("McpAgentToolGateway", () => {
     });
   });
 });
-

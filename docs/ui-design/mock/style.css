@@ -924,6 +924,10 @@ body {
 .manifest-key { color: var(--text-faint); }
 .manifest-val { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
 
+#acp-routing-settings {
+  margin-bottom: 1rem;
+}
+
 /* ============ Plugin Window Overlay ============ */
 .plugin-window-overlay {
   position: fixed;

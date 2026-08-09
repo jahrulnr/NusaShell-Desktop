@@ -1,15 +1,7 @@
-export type MemoryTarget = "memory" | "user";
-
-export interface MemoryEntry {
-  readonly text: string;
-  /** ISO-8601 creation time when known; null for legacy undated entries. */
-  readonly createdAt: string | null;
-}
-
-export interface MemoryUsage {
-  readonly chars: number;
-  readonly limit: number;
-}
+// Entity/value types are domain-owned (ticket #84, Klaster E) so the memory
+// policy and the persistence port share one source of truth.
+import type { MemoryTarget, MemoryEntry, MemoryUsage } from "@nusashell/domain";
+export type { MemoryTarget, MemoryEntry, MemoryUsage } from "@nusashell/domain";
 
 export interface MemorySnapshot {
   readonly memory: readonly MemoryEntry[];

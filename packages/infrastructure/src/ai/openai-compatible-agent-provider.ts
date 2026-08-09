@@ -4,7 +4,7 @@ import type {
   AgentProviderResult,
   AgentPromptCachePolicy,
 } from "@nusashell/application";
-import { resolveModelRuntimePolicy } from "./model-capability-policy.js";
+import { resolveModelRuntimePolicy } from "@nusashell/domain";
 import { parseOpenAiSse, SseTransportError } from "./openai-sse-parser.js";
 import type { ApiStrategy, ProviderApi } from "./openai-api-strategy.js";
 import { ChatApiStrategy, ResponsesApiStrategy, MessagesApiStrategy } from "./openai-api-strategy.js";
@@ -199,7 +199,7 @@ export class OpenAiCompatibleAgentProvider implements AgentProvider {
     try {
       response = await this.fetchFn(endpoint, {
         method: "POST",
-        headers: providerHeaders(api, this.options.apiKey, stream),
+        headers: providerHeaders(api, this.options.apiKey, stream, this.options.baseUrl),
         body: JSON.stringify(body),
         signal: connectTimeout.signal,
       });

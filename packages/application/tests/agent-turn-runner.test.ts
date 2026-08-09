@@ -147,6 +147,190 @@ class DeferredToolGateway implements AgentToolGateway {
 }
 
 describe("AgentTurnRunner", () => {
+  it("keeps the requested route separate from the model reported by the provider", async () => {
+    const provider = new ScriptedProvider([
+      { text: "done", model: "deepseek/deepseek-v4-flash-0731" },
+    ]);
+    const runner = new AgentTurnRunner({ provider, toolGateway: new FakeToolGateway() });
+
+    const result = await runner.run({
+      messages: [{ role: "user", content: "hello" }],
+      pluginIds: [],
+      model: "oc/deepseek-v4-flash-free",
+    });
+
+    expect(provider.requests[0]?.model).toBe("oc/deepseek-v4-flash-free");
+    expect(result.requestedModel).toBe("oc/deepseek-v4-flash-free");
+    expect(result.model).toBe("deepseek/deepseek-v4-flash-0731");
+  });
+
+  it("adds a synthetic runtime snapshot before the next provider round", async () => {
+    const provider = new ScriptedProvider([
+      { toolCalls: [{ id: "call-1", name: "notes.create", args: { title: "before switch" } }] },
+      { text: "done" },
+    ]);
+    const gateway = new FakeToolGateway();
+    let checks = 0;
+    const runner = new AgentTurnRunner({ provider, toolGateway: gateway, defaultMaxToolRounds: 2 });
+
+    await runner.run({
+      traceId: "trace-workspace-switch",
+      messages: [{ role: "user", content: "create a note" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        checks += 1;
+        return checks === 2
+          ? [
+              { role: "assistant", content: "", toolCalls: [{ id: "hydrate:workspace:0", name: "runtime_context", args: {} }] },
+              { role: "tool", toolCallId: "hydrate:workspace:0", name: "runtime_context", content: '{"workspace":"/next"}' },
+            ]
+          : [];
+      },
+    });
+
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1]?.messages).toContainEqual({
+      role: "tool",
+      toolCallId: "hydrate:workspace:0",
+      name: "runtime_context",
+      content: '{"workspace":"/next"}',
+    });
+  });
+
+  it("compacts a late runtime update before sampling the next provider round", async () => {
+    const provider = new ScriptedProvider([
+      { text: "Checkpoint for the late update and prior work." },
+      { text: "done" },
+    ]);
+    const runner = new AgentTurnRunner({
+      provider,
+      toolGateway: new FakeToolGateway(),
+      context: {
+        compactionEnabled: true,
+        maxInputTokens: 1_000,
+        reserveTokens: 100,
+        recentTurns: 1,
+        summaryMaxChars: 1_000,
+      },
+    });
+
+    let consumed = false;
+    const result = await runner.run({
+      traceId: "trace-late-compaction",
+      messages: [{ role: "user", content: "start" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        if (consumed) return [];
+        consumed = true;
+        return [{ role: "user", content: "late runtime update ".repeat(2_000) }];
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[0]?.tools).toEqual([]);
+    expect(provider.requests[1]?.messages.some((message) => (
+      message.role === "user" && String(message.content).startsWith(SUMMARY_PREFIX)
+    ))).toBe(true);
+  });
+
+  it("applies a user steer after an in-flight final sample and continues the same turn", async () => {
+    const provider = new ScriptedProvider([
+      { text: "I finished the original direction." },
+      { text: "I applied the correction." },
+    ]);
+    let boundaryChecks = 0;
+    const runner = new AgentTurnRunner({ provider, toolGateway: new FakeToolGateway(), defaultMaxToolRounds: 1 });
+
+    const result = await runner.run({
+      traceId: "trace-live-steer",
+      messages: [{ role: "user", content: "Start the audit" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        boundaryChecks += 1;
+        return boundaryChecks === 2
+          ? [{ role: "user", content: "Focus only on the renderer" }]
+          : [];
+      },
+    });
+
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1]?.messages.slice(-2)).toEqual([
+      { role: "assistant", content: "I finished the original direction." },
+      { role: "user", content: "Focus only on the renderer" },
+    ]);
+    expect(result.traceId).toBe("trace-live-steer");
+    expect(result.text).toBe("I applied the correction.");
+  });
+
+  it("loads a queued steer after provider reasoning before starting newly proposed tools", async () => {
+    const provider = new ScriptedProvider([
+      {
+        reasoning: "The old direction would edit a file.",
+        toolCalls: [{ id: "stale-call", name: "notes.create", args: { title: "old direction" } }],
+      },
+      { text: "I followed the steer instead." },
+    ]);
+    const gateway = new FakeToolGateway();
+    let boundaryChecks = 0;
+    const runner = new AgentTurnRunner({ provider, toolGateway: gateway, defaultMaxToolRounds: 1 });
+
+    const result = await runner.run({
+      traceId: "trace-reasoning-steer",
+      messages: [{ role: "user", content: "Start the original task" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        boundaryChecks += 1;
+        return boundaryChecks === 2
+          ? [{ role: "user", content: "Do not edit anything; report only" }]
+          : [];
+      },
+    });
+
+    expect(gateway.calls).toEqual([]);
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1]?.messages.at(-1)).toEqual({
+      role: "user",
+      content: "Do not edit anything; report only",
+    });
+    expect(result.text).toBe("I followed the steer instead.");
+    expect(result.steerBoundaries).toEqual([{
+      stepOffset: 1,
+      toolCallOffset: 0,
+      userMessages: [{ role: "user", content: "Do not edit anything; report only" }],
+    }]);
+  });
+
+  it("loads a queued steer after already-live tools settle before the next provider sample", async () => {
+    const provider = new ScriptedProvider([
+      { toolCalls: [{ id: "live-call", name: "notes.create", args: { title: "already running" } }] },
+      { text: "I continued with the new direction." },
+    ]);
+    const gateway = new FakeToolGateway();
+    let boundaryChecks = 0;
+    const runner = new AgentTurnRunner({ provider, toolGateway: gateway, defaultMaxToolRounds: 1 });
+
+    const result = await runner.run({
+      traceId: "trace-live-tool-steer",
+      messages: [{ role: "user", content: "Start the original task" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        boundaryChecks += 1;
+        return boundaryChecks === 3
+          ? [{ role: "user", content: "After that tool, report only" }]
+          : [];
+      },
+    });
+
+    expect(gateway.calls).toEqual([{ name: "notes.create", args: { title: "already running" } }]);
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1]?.messages.at(-1)).toEqual({
+      role: "user",
+      content: "After that tool, report only",
+    });
+    expect(result.text).toBe("I continued with the new direction.");
+  });
+
   it("cleans up the per-turn tool allowlist when a provider fails", async () => {
     const tools = new FakeToolGateway();
     const runner = new AgentTurnRunner({ provider: new ScriptedProvider([]), toolGateway: tools });
@@ -245,7 +429,7 @@ describe("AgentTurnRunner", () => {
       role: "tool",
       toolCallId: "call-1",
       name: "notes.create",
-      content: "status=success\ntruncated=false\n\nid=note-1",
+      content: "id=note-1",
     });
     expect(result.toolCalls[0]?.modelOutput).toBe(provider.requests[1]?.messages.at(-1)?.content);
     expect(completedTools[0]?.modelOutput).toBe(provider.requests[1]?.messages.at(-1)?.content);
@@ -280,7 +464,7 @@ describe("AgentTurnRunner", () => {
       toolCallId: "call-invalid",
       name: "notes.create",
       toolIsError: true,
-      content: expect.stringContaining("TOOL_ARGUMENTS_INVALID_JSON"),
+      content: "Tool call arguments were not valid JSON.",
     });
     expect(result.toolCalls[0]).toMatchObject({
       id: "call-invalid",

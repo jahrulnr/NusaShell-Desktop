@@ -25,7 +25,12 @@ message and exposes a Stop action. Completed assistant messages render
 GitHub-Flavored Markdown, including tables and code blocks, on an editorial
 full-width runway rather than inside a heavy chat bubble. User turns remain
 compact right-aligned cards with persisted attachment previews, timestamps, and
-a copy action. When a provider returns reasoning or a thinking summary, it is
+a copy action. Assistant footer metadata keeps the selected route/model, round count,
+and shortened trace compact; when a provider reports a different upstream model,
+that resolved identity remains available from the model tooltip without replacing
+the user's selection. A muted `Context updated` marker appears beside the
+round count only on the turn that created a fresh runtime-context hydration
+checkpoint, never on ordinary sidecar replay. When a provider returns reasoning or a thinking summary, it is
 persisted with the assistant message and appears before the answer in a muted,
 collapsed `Thinking` disclosure. Opening it reveals sanitized Markdown; models
 that return no reasoning do not leave an empty placeholder. Completed tool executions appear before the answer in a
@@ -47,7 +52,16 @@ composer starts as a single text row,
 grows with wrapped or explicit lines, and caps at ten rows before its textarea
 scrolls internally. Its compact footer keeps attachment, model, and workspace
 context in one flexible cluster, with context usage and turn actions aligned as
-a separate trailing cluster. Long model and workspace labels truncate instead
+one separate trailing cluster. An active turn does not lock the textarea:
+submitting a non-empty draft moves it into one compact steer card without
+interrupting current reasoning or tool work. The card can be cancelled while
+waiting, then changes to applied status when the message enters the same trace
+after provider reasoning (before newly proposed tools start) or after tools
+that were already live settle. Stop cancels the turn and restores a pending
+steer as an editable draft. Background-job completions never overwrite a draft
+or active turn; they remain queued and wake the agent only when this room is
+idle. Long model and workspace labels truncate
+instead
 of crowding actions; the full model label remains available as a tooltip. At
 very narrow widths the action cluster moves to a second row.
 
@@ -125,3 +139,24 @@ The Logs view uses the same full-height workspace principle as Agent. Its
 header and source filters stay fixed in the content area, while the bordered
 log card expands through the remaining viewport and owns the vertical scroll.
 Do not cap the card at a viewport percentage or fixed pixel height.
+
+## Usage
+
+The Usage view is a read-only analytics dashboard backed by the local
+telemetry JSONL spine (see `docs/architecture/token-telemetry.md`). It uses a
+compact instrument-panel hierarchy: prompt-cache reuse is the primary signal,
+supported by fresh tokens per completed turn, success rate, and provider
+request amplification. Total turns, median/p95 rounds, failure waste, and cost
+per turn (shown as `n/a` until cost passthrough lands) form a secondary
+operational strip instead of an equal-weight card grid.
+
+A zero-filled seven-day UTC activity chart always covers the seven calendar
+days ending at report generation, using all retained turn records rather than
+the capped recent-turn list. It distinguishes completed, failed, and other
+turn outcomes. Completion steering stays alongside the chart, while the recent
+turns trace log shows status, timing, rounds, tools, input, cache percentage,
+fresh input, and output for the newest 50 turns. Loading disables and labels
+Refresh without clearing an already-rendered report; first-load errors,
+disabled telemetry, and enabled-but-empty telemetry have distinct states.
+Telemetry remains metadata-only: no prompt content, model keys, or API keys are
+shown, and the renderer never writes telemetry.

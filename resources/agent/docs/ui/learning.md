@@ -63,7 +63,7 @@ The Table view contains a chronological list of learning nodes grouped by day. E
 
 ## Constellation
 
-The Connections view gives the graph the full panel width. It uses a compact force layout for related nodes and packs isolated nodes nearby, with edges between related skills. Node size reflects connection degree and labels become selective on larger graphs as the user zooms. Node color reflects kind and state. Click a dot to select the node and highlight its neighborhood. A time scrubber below fades nodes that fall after the selected percentage of the timeline.
+The Connections view gives the graph the full available panel width and height, with the time scrubber anchored as its footer. It uses a compact force layout for related nodes and packs isolated nodes nearby, with edges between related skills. Node size reflects connection degree and labels become selective on larger graphs as the user zooms. Node color reflects kind and state. Click a dot to select the node and highlight its neighborhood. The time scrubber fades nodes that fall after the selected percentage of the timeline.
 
 - **Constellation graph** (`#learning-constellation-canvas`):
   - Section: Constellation

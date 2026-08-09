@@ -15,6 +15,7 @@ import {
   type AgentTurnStep,
 } from "../../services/agent-turn-runner.js";
 import {
+  applyVars,
   injectPrompts,
   machineCurrentTime,
   machineTimeZone,
@@ -41,7 +42,7 @@ import type { TelemetryPort } from "../../../telemetry/telemetry.port.js";
 import { buildTurnTelemetry } from "../../../telemetry/build-turn-telemetry.js";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "../../ports/agent-provider.port.js";
-import { RuntimeHydrationBuilder } from "../../services/runtime-hydration.js";
+import { extractLatestRuntimeHydration, RuntimeHydrationBuilder } from "../../services/runtime-hydration.js";
 
 export interface AgentRuntimeSettings {
   maxToolRounds: number;
@@ -61,6 +62,18 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
   private readonly streamingBuffers = new Map<string, { kind: "text" | "reasoning"; content: string }>();
   /** Process-lifetime round-robin cursor shared across all turns (A2). */
   private readonly roundRobinCursor = { value: 0 };
+  /** Latest workspace switch awaiting synthetic runtime hydration per live room. */
+  private readonly workspaceUpdates = new Map<string, { traceId: string; workspace: string | undefined; pending: boolean }>();
+  /** At most one user steer can wait at the next safe boundary per live room. */
+  private readonly steerUpdates = new Map<string, {
+    traceId: string;
+    steerId: string;
+    displayText: string;
+    message: Extract<AgentMessage, { role: "user" }>;
+    status: "queued" | "applied";
+  }>();
+  /** Trace may accept steering only while its runner can still consume it. */
+  private readonly steerableTraces = new Map<string, string>();
   constructor(
     private readonly providers: AgentProviderRegistryPort,
     private readonly toolGateway: AgentToolGateway,
@@ -112,6 +125,51 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
     },
   ) {}
 
+  /**
+   * Called by the desktop workspace picker. Tool routing switches immediately;
+   * the runner consumes the matching synthetic snapshot at its next safe
+   * provider-round boundary.
+   */
+  updateWorkspace(conversationId: string, workspace: string | undefined): boolean {
+    const active = this.workspaceUpdates.get(conversationId);
+    if (!active) return false;
+    active.workspace = workspace;
+    active.pending = true;
+    this.toolGateway.updateTurnWorkspace?.(active.traceId, workspace);
+    return true;
+  }
+
+  queueSteer(input: {
+    readonly conversationId: string;
+    readonly traceId: string;
+    readonly steerId: string;
+    readonly displayText: string;
+    readonly message: Extract<AgentMessage, { role: "user" }>;
+  }): boolean {
+    const active = this.activeTurns?.get(input.conversationId);
+    const pendingSteer = this.steerUpdates.get(input.conversationId);
+    if (
+      !active
+      || active.traceId !== input.traceId
+      || this.steerableTraces.get(input.conversationId) !== input.traceId
+      || pendingSteer?.status === "queued"
+    ) return false;
+    const steer = { ...input, status: "queued" as const };
+    this.steerUpdates.set(input.conversationId, steer);
+    this.activeTurns?.setSteers(input.conversationId, [{ id: input.steerId, content: input.displayText, status: "queued" }]);
+    this.publishProgress(input.conversationId);
+    return true;
+  }
+
+  cancelSteer(conversationId: string, traceId: string, steerId: string): boolean {
+    const steer = this.steerUpdates.get(conversationId);
+    if (!steer || steer.traceId !== traceId || steer.steerId !== steerId || steer.status !== "queued") return false;
+    this.steerUpdates.delete(conversationId);
+    this.activeTurns?.setSteers(conversationId, []);
+    this.publishProgress(conversationId);
+    return true;
+  }
+
   async handle(command: RunAgentTurnCommand): Promise<AgentTurnResult> {
     const providerId = command.providerId ?? this.defaultProviderId;
     const preferredProvider = this.providers.get(providerId);
@@ -141,6 +199,7 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
     const worker: AgentTurnWorker = new InProcessAgentTurnWorker((input) => runner.run(input));
     const traceId = command.traceId ?? randomUUID();
     const conversationId = command.conversationId;
+    const workspaceState = { value: command.workspace };
     if (command.supersedeTraceId && command.supersedeTraceId !== traceId) {
       this.supersededTraceIds.add(command.supersedeTraceId);
       this.coordinator.cancel(command.supersedeTraceId);
@@ -161,6 +220,7 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
       ...(command.workspace ? { workspace: command.workspace } : {}),
       ...(conversationId ? { conversationId } : {}),
     });
+    if (conversationId) this.workspaceUpdates.set(conversationId, { traceId, workspace: command.workspace, pending: false });
     const injected = command.resume
       ? { messages: command.messages }
       : await this.injectSystemPrompts(command, traceId);
@@ -172,33 +232,52 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
       ? await this.injectSystemPrompts(command, traceId)
       : undefined;
     const systemContext = resumeInjected?.messages.filter((message) => message.role === "system");
-    // Hydration is assembled once per boundary (fresh room / post-compaction)
-    // and appended ephemeral AFTER real history (Option B). On a resume path we
+    // Hydration is assembled once per boundary (missing checkpoint / post-compaction)
+    // and appended AFTER real history (Option B). On a resume path we
     // do NOT rebuild a stale synthetic checkpoint: the runner re-hydrates after
     // compaction only. A normal later turn (not resume, not fresh) stays as-is.
-    const hydrationFactory = this.hydrationFactory();
-    this.handlerWorkspace = command.workspace;
+    const hydrationFactory = this.hydrationFactory(conversationId, () => workspaceState.value);
+    const consumeRuntimeUpdate = conversationId
+      ? async (): Promise<readonly AgentMessage[]> => {
+          const updates: AgentMessage[] = [];
+          const active = this.workspaceUpdates.get(conversationId);
+          if (active?.traceId === traceId && active.pending) {
+            active.pending = false;
+            workspaceState.value = active.workspace;
+            if (hydrationFactory) updates.push(...await hydrationFactory());
+          }
+          const steer = this.steerUpdates.get(conversationId);
+          if (steer?.traceId === traceId && steer.status === "queued") {
+            steer.status = "applied";
+            updates.push(steer.message);
+            this.activeTurns?.setSteers(conversationId, [{ id: steer.steerId, content: steer.displayText, status: "applied" }]);
+            this.publishProgress(conversationId);
+          }
+          return updates;
+        }
+      : undefined;
     let messages = injected.messages;
     if (!command.resume) {
-      // Fresh-room detection from durable conversation state is applied by the
-      // caller (conversationId present + no prior history). For a normal later
-      // turn the caller passes full history; here we only inject when the
-      // conversation is clearly brand-new (single user message, no assistant
-      // history). A fresh-room first request is identified by `messages` being
-      // exactly the injected system tail + one user message (no prior turns).
-      const hasPriorAssistant = injected.messages.some((m) => m.role === "assistant");
-      const isFreshRoom = !hasPriorAssistant && injected.messages.filter((m) => m.role === "user").length === 1;
-      if (isFreshRoom && hydrationFactory) {
+      // The renderer replays the latest hidden hydration checkpoint on later
+      // turns. Rooms created before that checkpoint existed self-heal here:
+      // inject once whenever the incoming graph has no complete hydration
+      // exchange, regardless of whether ordinary assistant history exists.
+      // Auto-continuations also rebuild it so the synthetic todo_list result
+      // reflects the latest checklist rather than a prior turn's checkpoint.
+      const hasHydration = extractLatestRuntimeHydration(injected.messages).length > 0;
+      const needsFreshHydration = (command.autoContinueIndex ?? 0) > 0;
+      if ((!hasHydration || needsFreshHydration) && hydrationFactory) {
         try {
           const transcript = await hydrationFactory();
           if (transcript.length > 0) messages = [...messages, ...transcript];
         } catch {
-          this.logger?.warn("Agent hydration build failed on fresh-room traceId=%s", traceId);
+          this.logger?.warn("Agent hydration build failed traceId=%s", traceId);
         }
       }
     }
     let turnEndReason: "completed" | "cancelled" | "failed" | "superseded" = "completed";
     const turnStartedAtMs = this.now();
+    if (conversationId) this.steerableTraces.set(conversationId, traceId);
     try {
       const result = await this.coordinator.run(traceId, (signal) => worker.run({
         messages,
@@ -207,6 +286,7 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
         signal,
         ...(systemContext ? { systemContext } : {}),
         ...(hydrationFactory ? { buildHydrationTranscript: hydrationFactory } : {}),
+        ...(consumeRuntimeUpdate ? { consumeRuntimeUpdate } : {}),
         todoPromptForCompaction: () => {
           if (!conversationId || !this.todoPort) return undefined;
           try {
@@ -216,7 +296,7 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
           }
         },
         ...(command.interactive !== undefined ? { interactive: command.interactive } : {}),
-        ...(command.workspace !== undefined ? { workspace: command.workspace } : {}),
+        ...(workspaceState.value !== undefined ? { workspace: workspaceState.value } : {}),
         ...(promptCache ? { promptCache } : {}),
         ...(this.onTextDelta || (conversationId && this.activeTurns)
           ? {
@@ -273,7 +353,11 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
         ...(command.model !== undefined ? { model: command.model } : {}),
         ...(command.effort !== undefined ? { effort: command.effort } : {}),
         ...(command.modelCapabilities !== undefined ? { modelCapabilities: command.modelCapabilities } : {}),
-      }));
+      })).finally(() => {
+        if (conversationId && this.steerableTraces.get(conversationId) === traceId) {
+          this.steerableTraces.delete(conversationId);
+        }
+      });
       if (this.onTurnComplete) {
         try {
           await this.onTurnComplete(result, {
@@ -315,6 +399,11 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
       if (conversationId) {
         this.streamingBuffers.delete(conversationId);
         this.activeTurns?.clear(conversationId, traceId);
+        const active = this.workspaceUpdates.get(conversationId);
+        if (active?.traceId === traceId) this.workspaceUpdates.delete(conversationId);
+        const steer = this.steerUpdates.get(conversationId);
+        if (steer?.traceId === traceId) this.steerUpdates.delete(conversationId);
+        if (this.steerableTraces.get(conversationId) === traceId) this.steerableTraces.delete(conversationId);
       }
       this.onTurnEnd?.(traceId, turnEndReason);
     }
@@ -478,14 +567,13 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
           this.logger?.warn("Skills catalog build failed: %s", error instanceof Error ? error.message : String(error));
         }
       }
-      const subagentPrompt = hasSubagentTool ? await this.promptLoader.loadSubagentPrompt() : undefined;
       const todoPrompt = this.todoPort && command.conversationId
         ? formatTodoPrompt(this.todoPort.get(command.conversationId))
         : undefined;
       const continuePrompt = (command.autoContinueIndex ?? 0) > 0
         ? await this.loadContinuePrompt()
         : undefined;
-      const { messages: injected, summary, promptCache } = injectPrompts(prompts, vars, command.messages, command.userPrompt ?? this.userPrompt, memoryPrompt, subagentPrompt, todoPrompt, skillsCatalogPrompt, continuePrompt);
+      const { messages: injected, summary, promptCache } = injectPrompts(prompts, vars, command.messages, command.userPrompt ?? this.userPrompt, memoryPrompt, todoPrompt, skillsCatalogPrompt, continuePrompt);
       this.logger?.debug(summary.toDebugLine(traceId));
       return { messages: injected, promptCache };
     } catch (error) {
@@ -495,26 +583,61 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
   }
 
   /**
-   * Factory for the ephemeral hydration transcript (Task 4). Called once for
-   * fresh-room and again post-compaction by the runner. Reuses the same
+   * Factory for the hidden hydration transcript. Called when the incoming
+   * context lacks a checkpoint and again post-compaction by the runner. Reuses the same
    * read-only snapshot sources as prompt injection (memory/skills/MCP) — never
    * executes the gateway and never mutates anything.
    */
-  private hydrationFactory(_workspace?: string): (() => Promise<readonly AgentMessage[]>) | undefined {
+  private hydrationFactory(conversationId: string | undefined, getWorkspace: () => string | undefined): (() => Promise<readonly AgentMessage[]>) | undefined {
     const memoryStore = this.memoryStore;
     const skillRegistry = this.skillRegistry;
+    const todoPort = this.todoPort;
     const gatewayAuth = (this.toolGateway as { getMcpLiveSnapshot?: (turnId: string) => Promise<import("../../services/mcp-live-prompt-formatter.js").McpLiveSnapshot> }).getMcpLiveSnapshot;
-    if (!gatewayAuth && !memoryStore && !skillRegistry) return undefined;
+    if (!gatewayAuth && !memoryStore && !skillRegistry && !todoPort) return undefined;
     const getMcpLiveSnapshot = gatewayAuth?.bind(this.toolGateway);
-    // Runtime context snapshot is assembled from the same session-stable
-    // sources as prompt injection vars (date/env/os/workspace/subagents).
-    const runtimeContext: import("../../services/runtime-hydration.js").RuntimeContextSnapshot = {
-      currentDate: stableCurrentDate(new Date()),
-      environment: process.env.NODE_ENV === "production" ? "production" : "development",
-      runtimeOs: detectRuntimeOs(this.runtimeOsProbe),
-      ...(this.handlerWorkspace ? { workspace: this.handlerWorkspace } : {}),
-    };
     return async () => {
+      // Resolve subagent routing + delegation guide. `getRoutingInfo` is the
+      // single authoritative source for connected providers and the user's
+      // default (Settings → ACP Agents); the guide (.md) stays on disk and is
+      // loaded on demand, then interpolated with the same vars as before.
+      let subagents:
+        | import("../../services/runtime-hydration.js").SubagentSnapshot
+        | undefined;
+      if (this.subagentPort) {
+        try {
+          const routing = await this.subagentPort.getRoutingInfo();
+          if (routing) {
+            const workspace = getWorkspace();
+            const vars: PromptVars = {
+              currentDate: stableCurrentDate(new Date()),
+              environment: process.env.NODE_ENV === "production" ? "production" : "development",
+              runtimeOs: detectRuntimeOs(this.runtimeOsProbe),
+              availableTools: "",
+              ...(workspace ? { workspace } : {}),
+              ...(routing.availableSubagents ? { availableSubagents: routing.availableSubagents } : {}),
+              ...(routing.defaultSubagent ? { defaultSubagent: routing.defaultSubagent } : {}),
+            };
+            const delegationGuide = await this.loadDelegationGuideCached();
+            subagents = {
+              available: routing.availableSubagents,
+              default: routing.defaultSubagent,
+              ...(delegationGuide !== null
+                ? { delegationGuide: applyVars(delegationGuide ?? "", vars) }
+                : {}),
+            };
+          }
+        } catch (error) {
+          this.logger?.warn("Subagent routing resolve failed for runtime_context: %s", error instanceof Error ? error.message : String(error));
+        }
+      }
+      const workspace = getWorkspace();
+      const runtimeContext: import("../../services/runtime-hydration.js").RuntimeContextSnapshot = {
+        currentDate: stableCurrentDate(new Date()),
+        environment: process.env.NODE_ENV === "production" ? "production" : "development",
+        runtimeOs: detectRuntimeOs(this.runtimeOsProbe),
+        ...(workspace ? { workspace } : {}),
+        ...(subagents ? { subagents } : {}),
+      };
       let mcpLive;
       try {
         mcpLive = getMcpLiveSnapshot
@@ -523,11 +646,20 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
       } catch {
         mcpLive = { running: [], tools: [] };
       }
+      let todoPrompt: string | undefined;
+      if (conversationId && todoPort) {
+        try {
+          todoPrompt = formatTodoPrompt(todoPort.get(conversationId));
+        } catch {
+          // A missing TODO snapshot must not prevent the rest of hydration.
+        }
+      }
       const builder = new RuntimeHydrationBuilder({
         ...(memoryStore ? { memory: memoryStore } : {}),
         ...(skillRegistry ? { skills: skillRegistry } : {}),
         mcpLive,
         runtimeContext,
+        ...(todoPrompt ? { todoPrompt } : {}),
       });
       const { messages } = await builder.build();
       return messages;
@@ -535,10 +667,33 @@ export class RunAgentTurnHandler implements CommandHandler<RunAgentTurnCommand, 
   }
 
   /**
-   * Conversation workspace captured at handle() so the hydration factory can
-   * include it in the runtime_context snapshot without re-reading state.
+   * Resolves the subagent delegation guide once and caches it for the
+   * life of this handler. The guide bytes are static (file content) but the
+   * vars are interpolated at snapshot assembly time so the runtime_context
+   * JSON carries fresh connected-subagent routing.
    */
-  private handlerWorkspace: string | undefined = undefined;
+  private delegationGuide: string | undefined | null = undefined;
+
+  /**
+   * Loads the subagent delegation guide once and caches the result for the
+   * life of this handler (`undefined` = not yet loaded, `null` = absent).
+   * Used by the runtime_context snapshot; the guide is data, not a
+   * system-prompt injection.
+   */
+  private async loadDelegationGuideCached(): Promise<string | undefined | null> {
+    if (this.delegationGuide !== undefined) return this.delegationGuide;
+    if (!this.promptLoader) {
+      this.delegationGuide = null;
+      return null;
+    }
+    try {
+      this.delegationGuide = (await this.promptLoader.loadSubagentPrompt()) ?? null;
+    } catch (error) {
+      this.logger?.warn("Subagent delegation guide load failed: %s", error instanceof Error ? error.message : String(error));
+      this.delegationGuide = null;
+    }
+    return this.delegationGuide;
+  }
 
   private async loadCompactPrompt(): Promise<string | undefined> {
     if (!this.promptLoader) return undefined;

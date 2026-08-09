@@ -11,6 +11,7 @@ export { StdioMcpClient, resolveStdioLaunch, HttpMcpClient, SseMcpClient, McpCli
 export { scanPluginDirectories, resolveManifestPath, resolvePluginRoot, PluginInstaller, PluginSyncService, BundledPluginSeeder, compareSemver, BUNDLED_SEED_STATE_FILE } from "./plugins/index.js";
 export { createLogger, type Logger, type LogObserver, type LogRecord } from "./logging/index.js";
 export { JsonlTelemetryWriter, type JsonlTelemetryWriterOptions } from "./telemetry/index.js";
+export { JsonlTelemetryReader, type JsonlTelemetryReaderOptions } from "./telemetry/index.js";
 export {
   AgentProviderRegistry,
   StaticAgentProvider,

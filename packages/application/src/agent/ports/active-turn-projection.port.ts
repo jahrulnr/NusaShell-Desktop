@@ -23,6 +23,12 @@ export interface ActiveTurnStreaming {
   readonly content: string;
 }
 
+export interface ActiveTurnSteer {
+  readonly id: string;
+  readonly content: string;
+  readonly status: "queued" | "applied";
+}
+
 export interface ActiveTurnSnapshot {
   readonly conversationId: string;
   readonly traceId: string;
@@ -32,6 +38,7 @@ export interface ActiveTurnSnapshot {
   readonly steps: readonly AgentTurnStep[];
   readonly streaming?: ActiveTurnStreaming;
   readonly openTools: readonly ActiveTurnOpenTool[];
+  readonly steers: readonly ActiveTurnSteer[];
   readonly model?: string;
   readonly providerId?: string;
   readonly updatedAt: string;
@@ -57,6 +64,7 @@ export interface ActiveTurnProjectionPort {
   setStreaming(conversationId: string, streaming: ActiveTurnStreaming | null): void;
   openTool(conversationId: string, call: AgentToolCall): void;
   endTool(conversationId: string, execution: AgentToolExecution): void;
+  setSteers(conversationId: string, steers: readonly ActiveTurnSteer[]): void;
   markAwaitingInput(conversationId: string): void;
   markRunning(conversationId: string): void;
   get(conversationId: string): ActiveTurnSnapshot | undefined;

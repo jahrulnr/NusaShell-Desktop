@@ -25,7 +25,7 @@ async function main() {
   const contextEngine = new ContextEngine(service.root);
   const retrievalEngine = new RetrievalEngine(service.root);
   const server = new Server(
-    { name: "nusashell-files", version: "0.1.0" },
+    { name: "nusashell-files", version: "0.1.1" },
     { capabilities: { tools: {}, prompts: {}, resources: {} } },
   );
 

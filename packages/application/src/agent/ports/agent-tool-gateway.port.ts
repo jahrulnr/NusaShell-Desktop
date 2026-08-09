@@ -28,6 +28,8 @@ export interface AgentTurnContext {
 
 export interface AgentToolGateway {
   beginTurn?(turnId: string, context?: AgentTurnContext): void;
+  /** Update a live turn's workspace after the user changes the room workspace. */
+  updateTurnWorkspace?(turnId: string, workspace: string | undefined): void;
   endTurn?(turnId: string): void;
   /**
    * Clear sticky grants for a conversation. Called when the conversation is

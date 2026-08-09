@@ -6,6 +6,7 @@ import {
   OpenAiCompatibleAgentProvider,
   NodeRuntimeOsProbe,
   FilesystemConversationTodoPort,
+  JsonlTelemetryReader,
   type Logger,
 } from "@nusashell/infrastructure";
 import {
@@ -29,6 +30,8 @@ import {
   type AgentProvider,
   type EventDispatcher,
   type TelemetryPort,
+  type TelemetryQueryPort,
+  NullTelemetryQueryPort,
 } from "@nusashell/application";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -53,6 +56,8 @@ export interface AgentRuntimeParts {
   readonly asyncToolRuntime: AsyncToolRuntime;
   /** Token-efficiency telemetry sink (undefined when disabled). */
   readonly telemetry?: TelemetryPort;
+  /** Read-only telemetry query port (always present; fails soft when disabled). */
+  readonly telemetryQuery: TelemetryQueryPort;
 }
 
 function bundledResource(relativePath: string): string {
@@ -225,5 +230,8 @@ export function createAgentRuntime(
     conversationTodos,
     asyncToolRuntime,
     ...(telemetry ? { telemetry } : {}),
+    telemetryQuery: telemetry && options.telemetryDir
+      ? new JsonlTelemetryReader({ dir: options.telemetryDir, onError: (error) => { logger.debug("telemetry read failed: %s", error instanceof Error ? error.message : String(error)); } })
+      : new NullTelemetryQueryPort(),
   };
 }

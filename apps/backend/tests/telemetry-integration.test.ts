@@ -59,6 +59,85 @@ describe("telemetry wiring (createContainer + stub provider)", () => {
       outcome: { status: "completed" },
     });
   });
+
+  it("query telemetry.get-report returns a readable aggregate (fail-soft read path)", async () => {
+    dir = await mkdtemp(join(tmpdir(), "telemetry-e2e-q-"));
+    container = createContainer({
+      port: 9198,
+      startWsServer: false,
+      telemetryDir: dir,
+      telemetry: { enabled: true },
+      ai: { providerId: "stub", stubEnabled: true, maxToolRounds: 1 },
+    });
+
+    await container.commandBus.execute({
+      kind: "run-agent-turn",
+      traceId: "trace-e2e-q",
+      conversationId: "conv-e2e-q",
+      messages: [{ role: "user", content: "hello telemetry query" }],
+      pluginIds: [],
+    }) as { text: string };
+    await waitForFile(dir, /^agent-turns-.*\.jsonl$/);
+
+    const report = await container.queryBus.execute({ kind: "telemetry.get-report", recentLimit: 10 }) as {
+      enabled: boolean;
+      telemetryDir: string | null;
+      turns: number;
+      costPerCompletedTurn: number | null;
+      recentTurns: readonly { traceId: string }[];
+    };
+    expect(report.enabled).toBe(true);
+    expect(report.telemetryDir).toBe(dir);
+    expect(report.turns).toBeGreaterThanOrEqual(1);
+    expect(report.costPerCompletedTurn).toBeNull();
+    expect(report.recentTurns.some((turn) => turn.traceId === "trace-e2e-q")).toBe(true);
+  });
+
+  it("query telemetry.get-report fails soft when no telemetry dir is configured", async () => {
+    container = createContainer({
+      port: 9197,
+      startWsServer: false,
+      ai: { providerId: "stub", stubEnabled: true, maxToolRounds: 1 },
+    });
+    const report = await container.queryBus.execute({ kind: "telemetry.get-report" }) as {
+      enabled: boolean;
+      telemetryDir: string | null;
+      turns: number;
+    };
+    expect(report.enabled).toBe(false);
+    expect(report.telemetryDir).toBeNull();
+    expect(report.turns).toBe(0);
+  });
+
+  it("telemetry.record-steering writes a steering record surfaced in the report", async () => {
+    dir = await mkdtemp(join(tmpdir(), "telemetry-e2e-s-"));
+    container = createContainer({
+      port: 9196,
+      startWsServer: false,
+      telemetryDir: dir,
+      telemetry: { enabled: true },
+      ai: { providerId: "stub", stubEnabled: true, maxToolRounds: 1 },
+    });
+
+    await container.commandBus.execute({
+      kind: "telemetry.record-steering",
+      conversationId: "conv-steer",
+      triggeredAt: new Date().toISOString(),
+      jobCount: 1,
+      outcome: "skipped",
+      reason: "not-idle",
+    }) as { ok: boolean };
+    await waitForFile(dir, /^steering-.*\.jsonl$/);
+
+    const report = await container.queryBus.execute({ kind: "telemetry.get-report" }) as {
+      enabled: boolean;
+      steering: { count: number; fired: number; skipped: number; skippedByReason: Record<string, number> };
+    };
+    expect(report.enabled).toBe(true);
+    expect(report.steering.count).toBeGreaterThanOrEqual(1);
+    expect(report.steering.skipped).toBeGreaterThanOrEqual(1);
+    expect(report.steering.skippedByReason["not-idle"]).toBeGreaterThanOrEqual(1);
+  });
 });
 
 function parseLines(text: string): unknown[] {

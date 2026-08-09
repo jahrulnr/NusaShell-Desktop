@@ -76,7 +76,7 @@ export async function execAsyncWait(
       `async_wait timeoutMs must be between ${MIN_WAIT_MS}ms and ${MAX_WAIT_MS}ms`,
     );
   }
-  // Race the wait against the abort signal so user steer / turn cancel
+  // Race the wait against the abort signal so explicit turn cancellation
   // interrupts the wait early instead of blocking until timeout.
   if (signal) {
     const result = await Promise.race([

@@ -1,30 +1,27 @@
 /**
  * Per-plugin token-bucket rate limiter for automation notifications.
  *
- * Defaults: 10 events/minute steady rate, 2× capacity for burst (20 tokens
+ * The business policy — defaults and the refill math — lives in
+ * @nusashell/domain (ticket #82, Klaster C). This class is the stateful port
+ * implementation: it owns the per-plugin buckets and delegates refill to the
+ * pure domain rule.
+ *
+ * Defaults: 10 events/minute steady rate, 2x capacity for burst (20 tokens
  * from cold), 64 KB payload cap. Configurable via constructor.
  *
  * See tmp/plan/watch-to-agent/04-mcp-automation-contract.md §Rate limiting.
  */
-export interface RateLimiterSettings {
-  readonly steadyRatePerMinute: number;
-  readonly burstCapacity: number;
-  readonly maxPayloadBytes: number;
-}
+import {
+  DEFAULT_AUTOMATION_RATE_LIMITS,
+  refillAutomationBucket,
+  type AutomationBucket,
+  type RateLimiterSettings,
+} from "@nusashell/domain";
 
-export const DEFAULT_AUTOMATION_RATE_LIMITS: RateLimiterSettings = {
-  steadyRatePerMinute: 10,
-  burstCapacity: 20,
-  maxPayloadBytes: 64 * 1024,
-};
-
-interface Bucket {
-  tokens: number;
-  lastRefillMs: number;
-}
+export { DEFAULT_AUTOMATION_RATE_LIMITS, type RateLimiterSettings } from "@nusashell/domain";
 
 export class AutomationRateLimiter {
-  private readonly buckets = new Map<string, Bucket>();
+  private readonly buckets = new Map<string, AutomationBucket>();
   private readonly now: () => number;
 
   constructor(
@@ -74,7 +71,7 @@ export class AutomationRateLimiter {
     this.buckets.clear();
   }
 
-  private getOrCreateBucket(pluginId: string): Bucket {
+  private getOrCreateBucket(pluginId: string): AutomationBucket {
     let bucket = this.buckets.get(pluginId);
     if (!bucket) {
       bucket = {
@@ -86,13 +83,10 @@ export class AutomationRateLimiter {
     return bucket;
   }
 
-  private refill(bucket: Bucket): void {
-    const now = this.now();
-    const elapsedMs = now - bucket.lastRefillMs;
-    if (elapsedMs <= 0) return;
-    const refillTokens = (elapsedMs / 60_000) * this.settings.steadyRatePerMinute;
-    bucket.tokens = Math.min(this.settings.burstCapacity, bucket.tokens + refillTokens);
-    bucket.lastRefillMs = now;
+  private refill(bucket: AutomationBucket): void {
+    const next = refillAutomationBucket(bucket, this.now(), this.settings);
+    bucket.tokens = next.tokens;
+    bucket.lastRefillMs = next.lastRefillMs;
   }
 }
 

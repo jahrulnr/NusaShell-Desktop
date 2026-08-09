@@ -97,6 +97,27 @@ describe("mapToCommand", () => {
     });
   });
 
+  it("maps agent.steer without superseding the active trace", () => {
+    const result = mapToCommand(makeRequest("agent.steer", {
+      conversationId: "conv-1",
+      traceId: "trace-1",
+      steerId: "steer-1",
+      displayText: "Change direction",
+      message: { role: "user", content: "Change direction" },
+    }));
+    expect(result).toEqual({
+      kind: "command",
+      command: {
+        kind: "steer-agent-turn",
+        conversationId: "conv-1",
+        traceId: "trace-1",
+        steerId: "steer-1",
+        displayText: "Change direction",
+        message: { role: "user", content: "Change direction" },
+      },
+    });
+  });
+
   it("maps agent.run with interactive true", () => {
     const result = mapToCommand(makeRequest("agent.run", {
       messages: [{ role: "user", content: "hi" }],

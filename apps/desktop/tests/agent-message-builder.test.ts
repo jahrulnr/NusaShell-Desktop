@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAssistantMessage, buildInterruptedMessage, buildToolCall } from "../src/shared/agent-message-builder.js";
+import { buildAssistantMessage, buildInterruptedMessage, buildSteeredInterruptedTranscript, buildSteeredTranscript, buildToolCall } from "../src/shared/agent-message-builder.js";
 import type { AgentTurnResult, AgentTurnPartial } from "@nusashell/application";
 
 describe("agent-message-builder", () => {
@@ -31,6 +31,29 @@ describe("agent-message-builder", () => {
     expect(message.steps?.map((step) => step.stepPosition)).toEqual([1, 2]);
     const toolStep = message.steps?.find((step) => step.type === "tool_calls");
     expect(toolStep?.type === "tool_calls" ? toolStep.calls.map((call) => call.callPosition) : []).toEqual([1]);
+  });
+
+  it("marks the turn that created a fresh runtime-context checkpoint", () => {
+    const result: AgentTurnResult = { traceId: "trace-context", text: "Done.", rounds: 1 };
+
+    expect(buildAssistantMessage(result, { contextUpdated: true }).contextUpdated).toBe(true);
+    expect(buildAssistantMessage(result).contextUpdated).toBeUndefined();
+  });
+
+  it("persists the selected route as the visible model and keeps the resolved model as detail", () => {
+    const result: AgentTurnResult = {
+      traceId: "trace-routed-model",
+      text: "Done.",
+      rounds: 1,
+      toolCalls: [],
+      requestedModel: "oc/deepseek-v4-flash-free",
+      model: "deepseek/deepseek-v4-flash-0731",
+    };
+
+    const message = buildAssistantMessage(result);
+
+    expect(message.model).toBe("oc/deepseek-v4-flash-free");
+    expect(message.resolvedModel).toBe("deepseek/deepseek-v4-flash-0731");
   });
 
   it("defaults missing args to {} in buildToolCall", () => {
@@ -163,6 +186,71 @@ describe("agent-message-builder", () => {
     };
     const message = buildAssistantMessage(result);
     expect(message.toolCalls).toBeUndefined();
+  });
+
+  it("splits a same-turn steer into assistant, user, assistant transcript rows", () => {
+    const result: AgentTurnResult = {
+      traceId: "trace-steered",
+      text: "Corrected answer",
+      rounds: 2,
+      toolCalls: [],
+      steps: [
+        { type: "text", content: "Original answer" },
+        { type: "text", content: "Corrected answer" },
+      ],
+      steerBoundaries: [{
+        stepOffset: 1,
+        toolCallOffset: 0,
+        userMessages: [{ role: "user", content: "Change direction" }],
+      }],
+    };
+
+    expect(buildSteeredTranscript(result).map(({ role, content, steer }) => ({ role, content, steer }))).toEqual([
+      { role: "assistant", content: "Original answer", steer: undefined },
+      { role: "user", content: "Change direction", steer: true },
+      { role: "assistant", content: "Corrected answer", steer: undefined },
+    ]);
+  });
+
+  it("keeps an empty final assistant segment after a steer so the reservation can seal", () => {
+    const result: AgentTurnResult = {
+      traceId: "trace-steered-empty-continuation",
+      text: "",
+      rounds: 1,
+      toolCalls: [],
+      steps: [],
+      steerBoundaries: [{
+        stepOffset: 0,
+        toolCallOffset: 0,
+        userMessages: [{ role: "user", content: "Use the other approach" }],
+      }],
+    };
+
+    expect(buildSteeredTranscript(result).map(({ role, content }) => ({ role, content }))).toEqual([
+      { role: "user", content: "Use the other approach" },
+      { role: "assistant", content: "" },
+    ]);
+  });
+
+  it("keeps the steer ordering when the continuation is interrupted", () => {
+    const partial: AgentTurnPartial = {
+      traceId: "trace-steered-fail",
+      text: "Continuation started",
+      rounds: 2,
+      toolCalls: [],
+      steps: [
+        { type: "text", content: "Original answer" },
+        { type: "text", content: "Continuation started" },
+      ],
+      messages: [],
+      steerBoundaries: [{ stepOffset: 1, toolCallOffset: 0, userMessages: [{ role: "user", content: "Change direction" }] }],
+    };
+
+    expect(buildSteeredInterruptedTranscript(partial, "provider").map(({ role, content, status }) => ({ role, content, status }))).toEqual([
+      { role: "assistant", content: "Original answer", status: undefined },
+      { role: "user", content: "Change direction", status: undefined },
+      { role: "assistant", content: "Continuation started", status: "interrupted" },
+    ]);
   });
 
   it("clamps huge args within the cap", () => {

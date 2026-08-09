@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="styles/learning.css">
 <link rel="stylesheet" href="styles/learning-detail.css">
 <link rel="stylesheet" href="styles/jobs.css">
+<link rel="stylesheet" href="styles/telemetry.css">
 <link rel="stylesheet" href="styles/acp.css">
 <link rel="stylesheet" href="styles/workbench.css">
 </head>
@@ -112,6 +113,10 @@
         <button class="nav-item" type="button" data-view="pipelines" data-nav title="Pipelines">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="6" r="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="18" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 8L11 15M16.5 8L13 15M9 6h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span class="nav-label">Pipelines</span>
+        </button>
+        <button class="nav-item" type="button" data-view="ai-usage" data-nav title="Usage">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M3 3v18h18M7 15l4-5 3 3 5-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Usage</span>
         </button>
         <button class="nav-item" type="button" data-view="logs" data-nav title="Logs">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M4 5h16M4 12h10M4 19h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="17" cy="12" r="1.5" fill="currentColor"/></svg>
@@ -260,6 +265,19 @@
               </div>
               <div class="agent-tool-job-list" id="agent-tool-job-list" role="list" aria-live="off" hidden></div>
             </div>
+            <section class="agent-steer-queue" id="agent-steer-queue" hidden aria-label="Pending steer" aria-live="polite">
+              <div class="agent-todo-strip-head">
+                <button class="agent-todo-strip-toggle" id="agent-steer-queue-toggle" type="button" aria-label="Steering queue" aria-expanded="true" aria-controls="agent-steer-queue-list" title="Collapse/expand steering queue">
+                  <span class="agent-todo-strip-chevron" aria-hidden="true">›</span>
+                  <span id="agent-steer-queue-title">1 steer queued</span>
+                </button>
+                <span class="agent-steer-queue-state" id="agent-steer-queue-state">Waiting for a safe boundary</span>
+              </div>
+              <div class="agent-steer-queue-item" id="agent-steer-queue-list" role="list">
+                <span class="agent-steer-queue-text" id="agent-steer-queue-text"></span>
+                <button class="agent-steer-cancel" id="agent-steer-cancel" type="button" aria-label="Cancel queued steer" title="Cancel queued steer">×</button>
+              </div>
+            </section>
             <form class="agent-composer" id="agent-form">
               <label class="sr-only" for="agent-input">Message to the agent</label>
               <textarea id="agent-input" rows="1" placeholder="Describe what you want the shell to do…" title="Ctrl+Enter or ⌘↩ to send"></textarea>
@@ -630,6 +648,115 @@
         </div>
       </section>
 
+      <!-- ===== Usage (Telemetry) View ===== -->
+      <section class="view telemetry-view" id="telemetry-view" data-view="ai-usage" aria-busy="false">
+        <div class="telemetry-header">
+          <div class="telemetry-heading">
+            <span class="telemetry-kicker">LOCAL · METADATA ONLY</span>
+            <h2 class="view-title">Usage</h2>
+            <p>Turn-level efficiency across provider requests, tools, and retries.</p>
+          </div>
+          <button class="action-btn telemetry-refresh" id="telemetry-refresh-btn" type="button" data-control="telemetry-refresh-btn">
+            <span class="telemetry-refresh-mark" aria-hidden="true">↻</span>
+            <span id="telemetry-refresh-label">Refresh</span>
+          </button>
+        </div>
+        <div class="telemetry-error" id="telemetry-error" role="alert" hidden>
+          <strong>Could not load telemetry</strong>
+          <span id="telemetry-error-message"></span>
+        </div>
+        <div class="telemetry-loading" id="telemetry-loading" role="status">
+          <div class="telemetry-loading-copy"><span>Reading retained telemetry</span><i aria-hidden="true"></i></div>
+          <div class="telemetry-loading-rails" aria-hidden="true"><span></span><span></span><span></span></div>
+        </div>
+        <div class="telemetry-empty" id="telemetry-empty" role="status" hidden>
+          <span class="telemetry-empty-mark" aria-hidden="true">∿</span>
+          <strong>Usage telemetry is empty</strong>
+          <span>No recorded turns yet. Complete an agent turn to see metrics here.</span>
+        </div>
+        <div id="telemetry-body" hidden>
+          <div class="telemetry-report-line">
+            <span><i aria-hidden="true"></i> Retained telemetry</span>
+            <span>Updated <time id="telemetry-generated">—</time></span>
+          </div>
+
+          <div class="telemetry-primary-grid" role="list" aria-label="Efficiency signals">
+            <article class="telemetry-cache-console" role="listitem">
+              <div class="telemetry-card-head">
+                <span class="telemetry-card-label">Prompt cache reuse</span>
+                <span class="telemetry-card-index">01</span>
+              </div>
+              <strong id="telemetry-cache-hit">—</strong>
+              <div class="telemetry-cache-track" role="meter" aria-label="Prompt cache reuse" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="telemetry-cache-meter">
+                <span id="telemetry-cache-meter-fill"></span>
+              </div>
+              <p>Share of provider input tokens served from cache.</p>
+            </article>
+            <div class="telemetry-key-signals">
+              <article class="telemetry-signal" role="listitem">
+                <span class="telemetry-card-label">Fresh input / completed turn</span>
+                <strong id="telemetry-fresh-tokens">—</strong>
+                <small>uncached tokens</small>
+              </article>
+              <article class="telemetry-signal" role="listitem">
+                <span class="telemetry-card-label">Successful turns</span>
+                <strong id="telemetry-success-rate">—</strong>
+                <small>completed / all turns</small>
+              </article>
+              <article class="telemetry-signal" role="listitem">
+                <span class="telemetry-card-label">Provider amplification</span>
+                <strong id="telemetry-req-per-turn">—</strong>
+                <small>requests / turn</small>
+              </article>
+            </div>
+          </div>
+
+          <div class="telemetry-operational-strip" role="list" aria-label="Operational metrics">
+            <div role="listitem"><span>Total turns</span><strong id="telemetry-turns">—</strong></div>
+            <div role="listitem"><span>Rounds · median</span><strong id="telemetry-rounds-median">—</strong></div>
+            <div role="listitem"><span>Rounds · p95</span><strong id="telemetry-rounds-p95">—</strong></div>
+            <div role="listitem"><span>Failure waste</span><strong id="telemetry-failure-waste">—</strong></div>
+            <div role="listitem"><span>Cost / turn</span><strong id="telemetry-cost">—</strong></div>
+          </div>
+
+          <div class="telemetry-analysis-grid">
+            <section class="telemetry-section telemetry-activity" aria-labelledby="telemetry-activity-title">
+              <div class="telemetry-section-head">
+                <div><span class="telemetry-section-index">SIGNAL 02 · UTC</span><h3 id="telemetry-activity-title">Seven-day activity</h3></div>
+                <div class="telemetry-legend" aria-label="Chart legend"><span class="is-completed">Completed</span><span class="is-failed">Failed</span><span class="is-other">Other</span></div>
+              </div>
+              <div class="telemetry-spark" id="telemetry-spark" role="list" aria-label="Agent turns for the last seven UTC calendar days"></div>
+            </section>
+
+            <section class="telemetry-section telemetry-steering" aria-labelledby="telemetry-steering-title">
+              <div class="telemetry-section-head"><div><span class="telemetry-section-index">CONTROL</span><h3 id="telemetry-steering-title">Completion steering</h3></div></div>
+              <div class="telemetry-steering-counts">
+                <div><span>Decisions</span><strong id="telemetry-steer-count">—</strong></div>
+                <div><span>Fired</span><strong id="telemetry-steer-fired">—</strong></div>
+                <div><span>Skipped</span><strong id="telemetry-steer-skipped">—</strong></div>
+              </div>
+              <div class="telemetry-steering-reasons"><span>Skip reasons</span><strong id="telemetry-steer-reasons">—</strong></div>
+            </section>
+          </div>
+
+          <section class="telemetry-section telemetry-recent" aria-labelledby="telemetry-recent-title">
+            <div class="telemetry-section-head">
+              <div><span class="telemetry-section-index">TRACE LOG</span><h3 id="telemetry-recent-title">Recent turns</h3></div>
+              <p>Newest 50 · cache and token values are provider-reported</p>
+            </div>
+            <div class="telemetry-table-wrap">
+              <table class="telemetry-table" aria-label="Recent agent turns">
+                <thead>
+                  <tr><th>Trace</th><th>Status</th><th>Completed</th><th>Duration</th><th>Rounds</th><th>Tools</th><th>Input</th><th>Cache</th><th>Fresh</th><th>Output</th></tr>
+                </thead>
+                <tbody id="telemetry-turns-table-body"></tbody>
+              </table>
+              <p class="telemetry-no-turns" id="telemetry-no-turns" hidden>No recorded turns.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <!-- ===== Pipeline Modal ===== -->
       <div class="modal-overlay" id="pipeline-modal" role="dialog" aria-modal="true" aria-labelledby="pipeline-modal-title">
         <div class="modal-card pipeline-modal-card">
@@ -889,9 +1016,18 @@
           <form class="settings-card" id="ai-global-model-form">
             <div class="settings-card-title">Global model</div>
             <p class="settings-card-copy">The model the shell runs by default: scheduled job/pipeline agent turns, context compaction summarizer, and new rooms that haven't picked their own model.</p>
-            <label class="settings-field">Model<select id="settings-global-model"></select>
+            <div class="settings-field">
+              <span class="settings-field-label">Model</span>
+              <div class="settings-model-picker agent-model-control">
+                <input id="settings-global-model" type="hidden">
+                <button class="agent-model-trigger" id="settings-global-model-trigger" type="button" aria-haspopup="dialog" aria-controls="settings-global-model-menu" aria-expanded="false"><span id="settings-global-model-trigger-label">Automatic (provider default)</span><span aria-hidden="true">⌄</span></button>
+                <div class="agent-model-menu settings-global-model-menu" id="settings-global-model-menu" role="dialog" aria-label="Choose global model" hidden>
+                  <label class="agent-model-search"><span aria-hidden="true">⌕</span><input id="settings-global-model-search" type="search" placeholder="Search models or providers…" autocomplete="off"></label>
+                  <div class="agent-model-list" id="settings-global-model-list" role="listbox" aria-label="Available global models"></div>
+                </div>
+              </div>
               <span class="settings-field-help">"Automatic (provider default)" uses each provider's configured default model.</span>
-            </label>
+            </div>
             <label class="settings-field">Effort<select id="settings-global-effort"><option value="auto">default</option></select>
               <span class="settings-field-help">Reasoning effort, when the selected model supports it.</span>
             </label>
@@ -1111,6 +1247,13 @@
 
   <!-- ===== Toast container ===== -->
   <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- ===== File drop overlay (ticket #74) ===== -->
+  <div class="shell-drop-overlay" id="shell-drop-overlay" hidden aria-hidden="true">
+    <span class="shell-drop-overlay-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M12 3v11m0 0-4-4m4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+    <strong class="shell-drop-overlay-label" data-drop-label>Drop to attach</strong>
+    <span class="shell-drop-overlay-hint">Release to add files</span>
+  </div>
 
 </div>
 

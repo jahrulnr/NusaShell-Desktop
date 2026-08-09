@@ -13,7 +13,45 @@ import {
   type SkillSummary,
   type ConversationTodoPort,
   type AgentTodoItem,
+  extractLatestRuntimeHydration,
 } from "../src/index.js";
+
+describe("runtime hydration checkpoint extraction", () => {
+  it("keeps the latest complete synthetic graph", () => {
+    const oldHydration = [
+      { role: "assistant" as const, content: "", toolCalls: [{ id: "hydrate:old:0", name: "runtime_context", args: {} }] },
+      { role: "tool" as const, toolCallId: "hydrate:old:0", name: "runtime_context", content: "old" },
+    ];
+    const latestHydration = [
+      { role: "assistant" as const, content: "", toolCalls: [
+        { id: "hydrate:new:0", name: "runtime_context", args: {} },
+        { id: "hydrate:new:1", name: "memory", args: { action: "list" } },
+      ] },
+      { role: "tool" as const, toolCallId: "hydrate:new:0", name: "runtime_context", content: "new" },
+      { role: "tool" as const, toolCallId: "hydrate:new:1", name: "memory", content: "{}" },
+    ];
+
+    expect(extractLatestRuntimeHydration([
+      { role: "system", content: "system" },
+      { role: "user", content: "first" },
+      ...oldHydration,
+      { role: "assistant", content: "answer" },
+      { role: "user", content: "switch workspace" },
+      ...latestHydration,
+    ])).toEqual(latestHydration);
+  });
+
+  it("rejects an incomplete synthetic graph", () => {
+    expect(extractLatestRuntimeHydration([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "", toolCalls: [
+        { id: "hydrate:broken:0", name: "runtime_context", args: {} },
+        { id: "hydrate:broken:1", name: "memory", args: { action: "list" } },
+      ] },
+      { role: "tool", toolCallId: "hydrate:broken:0", name: "runtime_context", content: "{}" },
+    ])).toEqual([]);
+  });
+});
 
 class ScriptedProvider implements AgentProvider {
   readonly id = "scripted";
@@ -172,7 +210,7 @@ describe("Runtime hydration transcript (fresh room)", () => {
 });
 
 describe("Runtime hydration transcript (normal later turn)", () => {
-  it("a normal later user turn has NO hydration transcript", async () => {
+  it("self-heals a legacy room that has no hidden hydration checkpoint", async () => {
     const provider = new ScriptedProvider([{ text: "ok" }]);
     const tools = new FakeToolGateway();
     const handler = makeHandler(provider, tools);
@@ -192,10 +230,37 @@ describe("Runtime hydration transcript (normal later turn)", () => {
     const request = provider.requests[0];
     expect(request).toBeDefined();
     if (!request) throw new Error("expected a provider request");
-    const assistantWithCalls = request.messages.filter(
-      (m) => m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0,
-    );
-    expect(assistantWithCalls.length).toBe(0);
+    expect(extractLatestRuntimeHydration(request.messages)).toHaveLength(6);
+  });
+
+  it("keeps an existing complete hydration graph without adding a duplicate", async () => {
+    const provider = new ScriptedProvider([{ text: "ok" }]);
+    const tools = new FakeToolGateway();
+    const handler = makeHandler(provider, tools);
+    const hydration = [
+      { role: "assistant" as const, content: "", toolCalls: [{ id: "hydrate:saved:0", name: "runtime_context", args: {} }] },
+      { role: "tool" as const, toolCallId: "hydrate:saved:0", name: "runtime_context", content: "{}" },
+    ];
+
+    await handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-later-saved",
+      messages: [
+        { role: "user", content: "first" },
+        ...hydration,
+        { role: "assistant", content: "answer one" },
+        { role: "user", content: "second" },
+      ],
+      pluginIds: [],
+    });
+
+    const request = provider.requests[0];
+    if (!request) throw new Error("expected a provider request");
+    expect(request.messages.filter(
+      (message) => message.role === "assistant"
+        && message.toolCalls?.some((call) => call.id.startsWith("hydrate:")),
+    )).toHaveLength(1);
+    expect(extractLatestRuntimeHydration(request.messages)).toEqual(hydration);
   });
 });
 
@@ -225,7 +290,7 @@ describe("Runtime hydration transcript (compaction)", () => {
       fakePromptLoader, undefined, undefined, undefined, undefined, undefined, undefined,
     );
     const longUser = "user message ".repeat(200).trim();
-    await handler.handle({
+    const result = await handler.handle({
       kind: "run-agent-turn",
       traceId: "trace-compact",
       messages: [
@@ -236,6 +301,13 @@ describe("Runtime hydration transcript (compaction)", () => {
       pluginIds: [],
       conversationId: "conv-compact",
     });
+
+    // Hidden checkpoint rows affect token pressure but not the durable message
+    // offset reported to the desktop, and they are not summarizer material.
+    expect(result.compaction?.compactedMessageCount).toBe(5);
+    expect(provider.requests[0]?.messages.some((message) => (
+      message.role === "tool" && message.toolCallId.startsWith("hydrate:")
+    ))).toBe(false);
 
     // The resumed (last) request is the post-compaction continuation.
     const resumed = provider.requests.at(-1);
@@ -394,5 +466,91 @@ describe("Hydration transcript carries real read-only snapshots when sources are
     }
     // No legacy checkpoint.
     expect(request.messages.some((m) => m.role === "user" && String(m.content).startsWith("[NUSASHELL RUNTIME CONTEXT]"))).toBe(false);
+  });
+
+  it("runtime_context snapshot carries subagent routing + interpolated delegation guide (not a system prompt)", async () => {
+    const provider = new ScriptedProvider([{ text: "ok" }]);
+    const tools = new FakeToolGateway();
+    const guide = "## Subagent delegation\nAvailable ACP agents: {{available_subagents}}\nDefault ACP agent: {{default_subagent}}";
+    const promptLoader: PromptLoaderPort = {
+      async loadPrompts() {
+        return [
+          { name: "system", content: "You are the NusaShell agent.", isTemplate: false },
+          { name: "mcp-tools", content: "Use advertised tools.", isTemplate: false },
+        ];
+      },
+      async loadSubagentPrompt() { return guide; },
+      async loadCompactPrompt() { return ""; },
+      async loadContinuePrompt() { return ""; },
+      async loadReviewPrompt() { return ""; },
+    };
+    const subagentPort: {
+      resolve(): Promise<{ tryOrder: string[]; candidates: Map<string, unknown> }>;
+      getRoutingInfo(): Promise<{ availableSubagents: string; defaultSubagent: string } | null>;
+      run(): Promise<{ ok: boolean }>;
+      cancel(): Promise<void>;
+    } = {
+      async resolve() { return { tryOrder: [], candidates: new Map() }; },
+      async getRoutingInfo() {
+        return { availableSubagents: "gemini, cursor", defaultSubagent: "gemini" };
+      },
+      async run() { return { ok: true }; },
+      async cancel() {},
+    };
+    const handler = new RunAgentTurnHandler(
+      makeRegistry(provider), // providers
+      tools,                  // toolGateway
+      "scripted",             // defaultProviderId
+      RUNTIME,                // runtime
+      undefined,              // logger
+      undefined,              // coordinator
+      undefined,              // onTextDelta
+      undefined,              // onReasoningDelta
+      undefined,              // onToolCallStart
+      undefined,              // onToolCallEnd
+      undefined,              // onContextUpdate
+      promptLoader,           // promptLoader
+      undefined,              // userPrompt
+      undefined,              // memoryStore
+      (_result) => {},        // onTurnComplete
+      undefined,              // onTurnEnd
+      undefined,              // onTurnStarted
+      undefined,              // onTurnSuperseded
+      undefined,              // runtimeOsProbe
+      undefined,              // activeTurns
+      undefined,              // onTurnProgress
+      subagentPort as never,  // subagentPort
+    );
+
+    await handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-subagents",
+      messages: [{ role: "user", content: "hi" }],
+      pluginIds: [],
+      conversationId: "conv-subagents",
+    });
+
+    const request = provider.requests[0];
+    if (!request) throw new Error("expected a provider request");
+    const runtimeResult = request.messages.find(
+      (m) => m.role === "tool" && m.name === "runtime_context",
+    );
+    expect(runtimeResult).toBeDefined();
+    const parsed = JSON.parse(String(runtimeResult?.content)) as {
+      subagents?: { available: string; default: string; delegationGuide?: string };
+    };
+    expect(parsed.subagents).toBeDefined();
+    expect(parsed.subagents?.available).toBe("gemini, cursor");
+    expect(parsed.subagents?.default).toBe("gemini");
+    expect(parsed.subagents?.delegationGuide).toContain("Available ACP agents: gemini, cursor");
+    expect(parsed.subagents?.delegationGuide).toContain("Default ACP agent: gemini");
+    // Fully interpolated — no leftover template vars.
+    expect(parsed.subagents?.delegationGuide).not.toContain("{{available_subagents}}");
+    expect(parsed.subagents?.delegationGuide).not.toContain("{{default_subagent}}");
+    // The guide no longer appears as a system prompt injection.
+    const systemContents = request.messages
+      .filter((m) => m.role === "system")
+      .map((m) => String(m.content));
+    expect(systemContents.join("\n")).not.toContain("Available ACP agents");
   });
 });

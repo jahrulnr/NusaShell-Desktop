@@ -1,1 +1,2 @@
 export { JsonlTelemetryWriter, type JsonlTelemetryWriterOptions } from "./jsonl-telemetry-writer.js";
+export { JsonlTelemetryReader, type JsonlTelemetryReaderOptions } from "./jsonl-telemetry-reader.js";

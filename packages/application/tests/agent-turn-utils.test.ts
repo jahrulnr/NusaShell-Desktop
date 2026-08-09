@@ -152,6 +152,22 @@ describe("unknownToolExecution", () => {
 });
 
 describe("formatMessagesForSummary", () => {
+  it("excludes hidden runtime hydration while retaining ordinary tool evidence", () => {
+    const messages: AgentMessage[] = [
+      { role: "user", content: "fix it" },
+      { role: "assistant", content: "", toolCalls: [{ id: "hydrate:one:0", name: "runtime_context", args: {} }] },
+      { role: "tool", toolCallId: "hydrate:one:0", name: "runtime_context", content: "large hidden snapshot" },
+      { role: "assistant", content: "Working", toolCalls: [{ id: "call-1", name: "write", args: { path: "a.txt" } }] },
+      { role: "tool", toolCallId: "call-1", name: "write", content: "saved" },
+    ];
+
+    const summary = formatMessagesForSummary(messages);
+    expect(summary).not.toContain("runtime_context");
+    expect(summary).not.toContain("large hidden snapshot");
+    expect(summary).toContain("write");
+    expect(summary).toContain("saved");
+  });
+
   it("includes tool call args alongside names on assistant messages", () => {
     const messages: AgentMessage[] = [
       { role: "user", content: "write a file" },

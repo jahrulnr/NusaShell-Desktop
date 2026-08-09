@@ -40,6 +40,7 @@ export async function execSubagent(
   logger?: LoggerPort,
   parentConversationId?: string,
   loadExecutionPrompt?: SubagentExecutionPromptLoader,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   if (!port) {
     const message = "No ACP providers are connected";
@@ -74,6 +75,16 @@ export async function execSubagent(
 
   const runId = randomUUID();
   const conversationId = `subagent:${runId}`;
+  let cancelled = false;
+  const cancelLiveRun = () => {
+    if (cancelled) return;
+    cancelled = true;
+    void port.cancel(runId, conversationId).catch((error) => {
+      logger?.warn("Subagent cancel failed runId=%s: %s", runId, error instanceof Error ? error.message : String(error));
+    });
+  };
+  if (signal?.aborted) cancelLiveRun();
+  else signal?.addEventListener("abort", cancelLiveRun, { once: true });
   const attempted: string[] = [];
   const failures: Array<{ providerId: string; error: string }> = [];
   let executionPrompt = DEFAULT_SUBAGENT_EXECUTION_PROMPT;
@@ -93,65 +104,84 @@ export async function execSubagent(
 
   logger?.info("Subagent workspace runId=%s cwd=%s", runId, effectiveWorkspace);
 
-  for (const providerId of resolved.tryOrder) {
-    const candidate = resolved.candidates.get(providerId);
-    if (!candidate) continue;
-    attempted.push(providerId);
-    try {
-      const result = await port.run({
-        runId,
-        conversationId,
-        ...(parentConversationId ? { parentConversationId } : {}),
-        ...(turnId ? { parentTraceId: turnId } : {}),
-        providerId,
-        workspace: effectiveWorkspace,
-        prompt: promptBlocks,
-        ...(title ? { title } : {}),
-        ...(candidate.preferredConfig ? { preferredConfig: candidate.preferredConfig } : {}),
-      });
-      if (result.ok) {
-        return {
-          ok: true,
+  try {
+    for (const providerId of resolved.tryOrder) {
+      if (cancelled) break;
+      const candidate = resolved.candidates.get(providerId);
+      if (!candidate) continue;
+      attempted.push(providerId);
+      try {
+        const result = await port.run({
           runId,
-          providerId: result.providerId,
+          conversationId,
+          ...(parentConversationId ? { parentConversationId } : {}),
+          ...(turnId ? { parentTraceId: turnId } : {}),
+          providerId,
           workspace: effectiveWorkspace,
-          ...(attempted.length > 1 ? { attempted: attempted.slice(0, -1) } : {}),
+          prompt: promptBlocks,
           ...(title ? { title } : {}),
-          summary: result.summary,
-          ...(result.configWarnings?.length ? { configWarnings: result.configWarnings } : {}),
-        };
-      }
-      const errorMsg = result.error ?? "Subagent turn failed";
-      failures.push({ providerId, error: errorMsg });
-      if (!isRetryable(result.error)) {
-        return {
-          ok: false,
-          runId,
-          providerId: result.providerId,
-          workspace: effectiveWorkspace,
-          ...(attempted.length > 1 ? { attempted: attempted.slice(0, -1) } : {}),
-          ...(title ? { title } : {}),
-          error: errorMsg,
-          ...(failures.length > 1 ? { failures: failures.slice(0, -1) } : {}),
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      failures.push({ providerId, error: errorMsg });
-      if (!isRetryable(error)) {
-        throw error;
+          ...(candidate.preferredConfig ? { preferredConfig: candidate.preferredConfig } : {}),
+        });
+        if (cancelled) break;
+        if (result.ok) {
+          return {
+            ok: true,
+            runId,
+            providerId: result.providerId,
+            workspace: effectiveWorkspace,
+            ...(attempted.length > 1 ? { attempted: attempted.slice(0, -1) } : {}),
+            ...(title ? { title } : {}),
+            summary: result.summary,
+            ...(result.configWarnings?.length ? { configWarnings: result.configWarnings } : {}),
+          };
+        }
+        const errorMsg = result.error ?? "Subagent turn failed";
+        failures.push({ providerId, error: errorMsg });
+        if (!isRetryable(result.error)) {
+          return {
+            ok: false,
+            runId,
+            providerId: result.providerId,
+            workspace: effectiveWorkspace,
+            ...(attempted.length > 1 ? { attempted: attempted.slice(0, -1) } : {}),
+            ...(title ? { title } : {}),
+            error: errorMsg,
+            ...(failures.length > 1 ? { failures: failures.slice(0, -1) } : {}),
+          };
+        }
+      } catch (error) {
+        if (cancelled) break;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        failures.push({ providerId, error: errorMsg });
+        if (!isRetryable(error)) {
+          throw error;
+        }
       }
     }
-  }
 
-  return {
-    ok: false,
-    runId,
-    workspace: effectiveWorkspace,
-    ...(attempted.length > 0 ? { providerId: attempted[attempted.length - 1] } : {}),
-    attempted,
-    ...(title ? { title } : {}),
-    error: `All ACP providers failed: ${failures.map((f) => `${f.providerId} (${f.error})`).join(", ")}`,
-    failures,
-  };
+    if (cancelled) {
+      return {
+        ok: false,
+        runId,
+        workspace: effectiveWorkspace,
+        ...(attempted.length > 0 ? { providerId: attempted[attempted.length - 1] } : {}),
+        attempted,
+        ...(title ? { title } : {}),
+        error: "Subagent run cancelled",
+      };
+    }
+
+    return {
+      ok: false,
+      runId,
+      workspace: effectiveWorkspace,
+      ...(attempted.length > 0 ? { providerId: attempted[attempted.length - 1] } : {}),
+      attempted,
+      ...(title ? { title } : {}),
+      error: `All ACP providers failed: ${failures.map((f) => `${f.providerId} (${f.error})`).join(", ")}`,
+      failures,
+    };
+  } finally {
+    signal?.removeEventListener("abort", cancelLiveRun);
+  }
 }

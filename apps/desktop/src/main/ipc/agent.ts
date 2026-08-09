@@ -33,8 +33,11 @@ export function registerAgentIpc(ctx: IpcContext): void {
   });
   ipcMain.handle("agent-conversations:replace-interrupted", (_event, id: string, message: AgentConversationMessage) =>
     store().replaceLastInterrupted(id, message));
-  ipcMain.handle("agent-conversations:set-workspace", (_event, id: string, workspace: string) =>
-    store().setWorkspace(id, workspace));
+  ipcMain.handle("agent-conversations:set-workspace", async (_event, id: string, workspace: string) => {
+    const conversation = await store().setWorkspace(id, workspace);
+    ctx.updateAgentWorkspace(id, workspace || undefined);
+    return conversation;
+  });
   ipcMain.handle("agent-conversations:set-model", (_event, id: string, model: AgentConversationModelBinding | null) =>
     store().setModel(id, model));
   ipcMain.handle("agent-conversations:upsert-canvas-artifact", (_event, id: string, artifact: AgentCanvasArtifact) =>

@@ -35,6 +35,7 @@ export type {
   AcpProviderResolverPort,
   ActiveTurnOpenTool,
   ActiveTurnStreaming,
+  ActiveTurnSteer,
   ActiveTurnSnapshot,
   ActiveTurnStartInput,
   ActiveTurnProjectionPort,
@@ -58,6 +59,7 @@ export {
   type RunAgentTurnInput,
   type AgentTurnResult,
   type AgentTurnPartial,
+  type AgentSteerBoundary,
   type AgentCompactionCheckpoint,
   type AgentContextOptions,
   type AgentToolExecution,
@@ -155,8 +157,10 @@ export type {
   AnswerAskQuestionCommand,
   ManageTodosCommand,
   KillToolJobCommand,
+  SteerAgentTurnCommand,
+  CancelAgentSteerCommand,
 } from "./commands/index.js";
-export { RunAgentTurnHandler, CancelAgentTurnHandler, AnswerAskQuestionHandler, ManageTodosHandler, KillToolJobHandler, type AgentRuntimeSettings, type ManageTodosResult } from "./commands/index.js";
+export { RunAgentTurnHandler, CancelAgentTurnHandler, AnswerAskQuestionHandler, ManageTodosHandler, KillToolJobHandler, SteerAgentTurnHandler, CancelAgentSteerHandler, type AgentRuntimeSettings, type ManageTodosResult, type AgentSteerResult } from "./commands/index.js";
 export type { GetActiveTurnQuery, GetActiveTurnResult, ToolJobListQuery } from "./queries/index.js";
 export { GetActiveTurnHandler, ToolJobListHandler } from "./queries/index.js";
 export type { SubagentRunStartedEvent } from "./events/subagent-run-started.event.js";

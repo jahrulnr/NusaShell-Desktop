@@ -26,7 +26,6 @@ describe("injectPrompts — continue steering", () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       "Continue pursuing open CURRENT TASKS.",
     );
     const continueIdx = out.findIndex((m) => m.role === "user" && m.content === "Continue pursuing open CURRENT TASKS.");
@@ -42,7 +41,6 @@ describe("injectPrompts — continue steering", () => {
       staticPrompts,
       vars,
       [{ role: "user", content: "earlier" }],
-      undefined,
       undefined,
       undefined,
       undefined,

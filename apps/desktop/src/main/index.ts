@@ -16,14 +16,15 @@ import {
 } from "./window-manager.js";
 import { LINUX_DESKTOP_APP_NAME } from "./window-assets.js";
 import { AppUpdater } from "./updater.js";
-import { loadConfig, type StartPluginCommand } from "@nusashell/application";
+import { extractLatestRuntimeHydration, loadConfig, type StartPluginCommand } from "@nusashell/application";
 import { AiSettingsStore, type AiRegistrySettings } from "./ai-settings.js";
 import { AcpProviderStore } from "./acp-provider-store.js";
 import { AcpProviderResolverAdapter } from "./acp-provider-resolver-adapter.js";
 import { refreshAcpAuthStatuses } from "./acp-auth.js";
 import { flattenModelCatalog } from "./ai-provider-registry.js";
 import { AgentConversationStore } from "./agent-conversation-store.js";
-import { buildAssistantMessage, buildInterruptedMessage } from "../shared/agent-message-builder.js";
+import { buildAssistantMessage, buildInterruptedMessage, buildSteeredInterruptedTranscript, buildSteeredTranscript } from "../shared/agent-message-builder.js";
+import type { AgentRuntimeHydration } from "../shared/agent-conversation-contract.js";
 import { MailSettingsStore } from "./mail-settings.js";
 import {
   AppBehaviorStore,
@@ -236,20 +237,39 @@ async function startBackend(): Promise<BootstrapResult> {
         return;
       }
       try {
-        const message = buildAssistantMessage(result);
-        await store.sealAssistant(conversationId, result.traceId, message);
+        // Capture the durable boundary before this turn is sealed. A
+        // compaction result describes provider input covered by the summary;
+        // it must never advance past the assistant transcript produced by
+        // this turn. If we derive the boundary from the post-seal message
+        // count, the just-completed answer is compacted away and the next
+        // user turn can resurrect an older TODO/checkpoint state.
+        const beforeSeal = await store.get(conversationId);
+        const beforeSealMessages = beforeSeal?.messages ?? [];
+        const beforeSealCount = beforeSealMessages.length;
+        const beforeSealPosition = beforeSealMessages.at(-1)?.position;
+        const contextUpdated = await hasFreshRuntimeHydration(store, conversationId, result.messages);
+        if (result.steerBoundaries?.length) {
+          const transcript = buildSteeredTranscript(result);
+          const last = transcript.at(-1);
+          if (last && contextUpdated) transcript[transcript.length - 1] = { ...last, contextUpdated: true };
+          await store.sealAssistantTranscript(conversationId, result.traceId, transcript);
+        } else {
+          const message = buildAssistantMessage(result, { contextUpdated });
+          await store.sealAssistant(conversationId, result.traceId, message);
+        }
+        await persistRuntimeHydration(store, conversationId, result.traceId, result.messages);
         if (result.compaction?.summary) {
           const updated = await store.get(conversationId);
           const previous = updated?.checkpoint;
           const previousOffset = previous?.compactedMessageCount ?? 0;
           const summaryMessageCount = previous?.summary ? 1 : 0;
-          const messageCount = updated?.messages.length ?? 0;
           await store.saveCheckpoint(conversationId, {
             summary: result.compaction.summary,
             compactedMessageCount: Math.min(
-              messageCount,
+              beforeSealCount,
               previousOffset + Math.max(0, result.compaction.compactedMessageCount - summaryMessageCount),
             ),
+            ...(beforeSealPosition !== undefined ? { compactedThroughPosition: beforeSealPosition } : {}),
             via: result.compaction.via,
             compactionCount: (previous?.compactionCount ?? (previous?.summary ? 1 : 0)) + 1,
           });
@@ -266,8 +286,20 @@ async function startBackend(): Promise<BootstrapResult> {
         return;
       }
       try {
-        const message = buildInterruptedMessage(partial, { interruptReason: options.interruptReason });
-        await store.sealAssistant(conversationId, partial.traceId, message);
+        const contextUpdated = await hasFreshRuntimeHydration(store, conversationId, partial.messages);
+        if (partial.steerBoundaries?.length) {
+          const transcript = buildSteeredInterruptedTranscript(partial, options.interruptReason);
+          const last = transcript.at(-1);
+          if (last && contextUpdated) transcript[transcript.length - 1] = { ...last, contextUpdated: true };
+          await store.sealAssistantTranscript(conversationId, partial.traceId, transcript);
+        } else {
+          const message = {
+            ...buildInterruptedMessage(partial, { interruptReason: options.interruptReason }),
+            ...(contextUpdated ? { contextUpdated: true } : {}),
+          };
+          await store.sealAssistant(conversationId, partial.traceId, message);
+        }
+        await persistRuntimeHydration(store, conversationId, partial.traceId, partial.messages);
         logTail.add(
           "main",
           "info",
@@ -285,6 +317,67 @@ async function startBackend(): Promise<BootstrapResult> {
   });
   for (const provider of aiSettings.providers) configureProvider(result, provider);
   return result;
+}
+
+async function persistRuntimeHydration(
+  store: AgentConversationStore,
+  conversationId: string,
+  traceId: string,
+  messages: Parameters<typeof extractLatestRuntimeHydration>[0] | undefined,
+): Promise<void> {
+  if (!messages) return;
+  const extracted = extractLatestRuntimeHydration(messages);
+  if (extracted.length === 0) return;
+  const conversation = await store.get(conversationId);
+  const snapshotWorkspace = hydrationWorkspace(extracted);
+  if (!snapshotWorkspace.valid || snapshotWorkspace.workspace !== conversation?.workspace) {
+    logTail.add("main", "debug", `Ignored stale runtime hydration for ${conversationId} trace=${traceId}`);
+    return;
+  }
+  if (JSON.stringify(conversation?.runtimeHydration?.messages) === JSON.stringify(extracted)) return;
+  await store.saveRuntimeHydration(conversationId, {
+    traceId,
+    updatedAt: new Date().toISOString(),
+    messages: extracted as AgentRuntimeHydration["messages"],
+  });
+  logTail.add("main", "debug", `Saved runtime hydration for ${conversationId} trace=${traceId}`);
+}
+
+/**
+ * A replayed sidecar appears in every later provider request, but only a
+ * changed graph denotes an actual hydration boundary worth surfacing in UI.
+ */
+async function hasFreshRuntimeHydration(
+  store: AgentConversationStore,
+  conversationId: string,
+  messages: Parameters<typeof extractLatestRuntimeHydration>[0] | undefined,
+): Promise<boolean> {
+  if (!messages) return false;
+  const extracted = extractLatestRuntimeHydration(messages);
+  if (extracted.length === 0) return false;
+  const conversation = await store.get(conversationId);
+  const snapshotWorkspace = hydrationWorkspace(extracted);
+  if (!snapshotWorkspace.valid || snapshotWorkspace.workspace !== conversation?.workspace) return false;
+  return JSON.stringify(conversation?.runtimeHydration?.messages) !== JSON.stringify(extracted);
+}
+
+function hydrationWorkspace(messages: Parameters<typeof extractLatestRuntimeHydration>[0]): {
+  readonly valid: boolean;
+  readonly workspace?: string;
+} {
+  const runtimeContext = messages.find(
+    (message) => message.role === "tool" && message.name === "runtime_context",
+  );
+  if (runtimeContext?.role !== "tool") return { valid: false };
+  try {
+    const parsed: unknown = JSON.parse(runtimeContext.content);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { valid: false };
+    const workspace = (parsed as Record<string, unknown>).workspace;
+    if (workspace === undefined) return { valid: true };
+    return typeof workspace === "string" ? { valid: true, workspace } : { valid: false };
+  } catch {
+    return { valid: false };
+  }
 }
 
 function requireBackend(): BootstrapResult {
@@ -321,6 +414,7 @@ function createIpcContext(): IpcContext {
     backgroundReviewScheduler: c.backgroundReviewScheduler,
     learningGraph: c.learningGraph,
     agentToolGateway: c.agentToolGateway,
+    updateAgentWorkspace: (...args) => c.updateAgentWorkspace(...args),
     conversationTodos: c.conversationTodos,
     configureBackgroundReview: (...args) => c.configureBackgroundReview(...args),
     configureCurator: (...args) => c.configureCurator(...args),

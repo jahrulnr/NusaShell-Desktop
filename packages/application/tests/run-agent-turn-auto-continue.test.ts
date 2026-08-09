@@ -30,6 +30,7 @@ class FakeToolGateway implements AgentToolGateway {
   cancelTurn() {}
   async listTools() { return []; }
   async execute() { return { ok: true }; }
+  async getMcpLiveSnapshot() { return { running: [], tools: [] }; }
 }
 
 class FakePromptLoader implements PromptLoaderPort {
@@ -179,6 +180,33 @@ describe("RunAgentTurnHandler auto-continue", () => {
     const sent = provider.requests[0]?.messages ?? [];
     expect(sent.some((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("Continue pursuing open CURRENT TASKS."))).toBe(true);
     expect(result.autoContinue).toMatchObject({ shouldContinue: true, continuesUsed: 1 });
+  });
+
+  it("refreshes a todo_list hydration result after continuation, even when the room carries an older checkpoint", async () => {
+    const provider = new ScriptedProvider([{ text: "continuing" }]);
+    const todos = new InMemoryConversationTodoPort();
+    todos.set("conv-fresh-todos", [{ id: "1", content: "verify the final build", status: "in_progress" }]);
+    const handler = buildHandler({ provider, todos, promptLoader: new FakePromptLoader() });
+    const oldHydration = [
+      { role: "assistant" as const, content: "", toolCalls: [{ id: "hydrate:old:0", name: "runtime_context", args: {} }] },
+      { role: "tool" as const, toolCallId: "hydrate:old:0", name: "runtime_context", content: "{}" },
+    ];
+
+    await handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-fresh-todos",
+      conversationId: "conv-fresh-todos",
+      autoContinueIndex: 1,
+      messages: [{ role: "user", content: "earlier" }, ...oldHydration, { role: "assistant", content: "first pass" }],
+      pluginIds: [],
+    });
+
+    const sent = provider.requests[0]?.messages ?? [];
+    const continueIndex = sent.findIndex((message) => message.role === "user" && String(message.content).includes("Continue pursuing open CURRENT TASKS."));
+    const todoIndex = sent.findIndex((message) => message.role === "tool" && message.name === "todo_list");
+    expect(continueIndex).toBeGreaterThan(-1);
+    expect(todoIndex).toBeGreaterThan(continueIndex);
+    expect(sent[todoIndex]?.content).toContain("verify the final build");
   });
 
   it("does not load the continue prompt when autoContinueIndex is 0", async () => {

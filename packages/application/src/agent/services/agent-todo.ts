@@ -1,31 +1,15 @@
-export type AgentTodoStatus = "pending" | "in_progress" | "completed";
-
-export interface AgentTodoItem {
-  readonly id: string;
-  readonly content: string;
-  readonly status: AgentTodoStatus;
-}
-
-export interface AgentTodoList {
-  readonly conversationId: string;
-  readonly items: readonly AgentTodoItem[];
-}
-
-export interface AgentTodoSummary {
-  readonly total: number;
-  readonly pending: number;
-  readonly inProgress: number;
-  readonly completed: number;
-}
-
-export function summarizeTodos(items: readonly AgentTodoItem[]): AgentTodoSummary {
-  let pending = 0;
-  let inProgress = 0;
-  let completed = 0;
-  for (const item of items) {
-    if (item.status === "pending") pending++;
-    else if (item.status === "in_progress") inProgress++;
-    else if (item.status === "completed") completed++;
-  }
-  return { total: items.length, pending, inProgress, completed };
-}
+/**
+ * Todo-status domain (ticket #80, Klaster A).
+ *
+ * The pure todo rules moved to `packages/domain/src/agent/todo-status.ts`;
+ * this module re-exports them so application consumers keep a stable import
+ * path and the todo status vocabulary has a single source of truth.
+ */
+export {
+  summarizeTodos,
+  countOpenTodos,
+  type AgentTodoStatus,
+  type AgentTodoItem,
+  type AgentTodoList,
+  type AgentTodoSummary,
+} from "@nusashell/domain";

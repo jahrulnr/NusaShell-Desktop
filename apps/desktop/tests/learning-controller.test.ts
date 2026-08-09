@@ -68,4 +68,15 @@ describe("LearningController graph lifecycle", () => {
 
     expect(mount).toHaveBeenCalledOnce();
   });
+
+  it("destroys the graph renderer when leaving Connections", async () => {
+    const controller = new LearningController({ learning: { graph: vi.fn().mockResolvedValue(graph) } });
+
+    await controller.initialize();
+    document.getElementById("learning-tab-connections").click();
+    document.getElementById("learning-tab-table").click();
+
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(controller.sigmaGraph).toBeNull();
+  });
 });

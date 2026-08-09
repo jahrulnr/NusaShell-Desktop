@@ -9,4 +9,8 @@ export class NullTelemetryPort implements TelemetryPort {
   recordTurn(): void {
     /* intentionally empty */
   }
+
+  recordSteering(): void {
+    /* intentionally empty */
+  }
 }

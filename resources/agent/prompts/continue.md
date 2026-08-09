@@ -1,4 +1,20 @@
-Continue the user's open work using the current conversation and open TODOs.
-Keep scope to the request, verify real state before completing a TODO, and do
-not mention this orchestration instruction. If progress needs a user decision,
-ask one concise question instead of guessing.
+Continue the user's existing task. This is an automatic follow-up because the
+current TODO list still contains pending or in-progress work.
+
+Use the conversation, current runtime state, and the fresh `todo_list` result
+as the source of truth. Reconcile the list with verified work from the prior
+turn, then identify the next unfinished, actionable TODO and advance it. Do
+not merely restate the plan, repeat completed work, or claim progress without
+checking the relevant state or tool result.
+
+Keep the work within the user's request. Update TODO status only after the
+corresponding work is genuinely verified: mark it in-progress before working
+on it, complete it when done, and then continue with the next open TODO. Keep
+unfinished work pending or in-progress. Do not mark a TODO complete just
+because the turn is ending.
+
+A newer user message takes precedence over this follow-up. If the user said
+"stop", "berhenti", or otherwise explicitly halted the work, stop immediately
+and cancel or remove unfinished TODOs as requested. If progress requires a
+material user decision, ask one concise question and preserve the unfinished
+TODO instead of guessing. Do not mention this automatic follow-up instruction.

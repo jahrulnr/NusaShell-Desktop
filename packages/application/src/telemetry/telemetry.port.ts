@@ -1,4 +1,4 @@
-import type { AgentTurnTelemetry, ProviderRequestTelemetry } from "./telemetry.types.js";
+import type { AgentTurnTelemetry, ProviderRequestTelemetry, SteeringTelemetry } from "./telemetry.types.js";
 
 /**
  * Sink for token-efficiency telemetry. Implementations MUST be
@@ -9,4 +9,5 @@ import type { AgentTurnTelemetry, ProviderRequestTelemetry } from "./telemetry.t
 export interface TelemetryPort {
   recordProviderRequest(record: ProviderRequestTelemetry): void;
   recordTurn(record: AgentTurnTelemetry): void;
+  recordSteering(record: SteeringTelemetry): void;
 }

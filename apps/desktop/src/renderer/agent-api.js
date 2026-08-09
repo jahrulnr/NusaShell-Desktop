@@ -73,6 +73,14 @@ export async function cancelAgentTurn(traceId) {
   return sendRequest("agent.cancel", { traceId });
 }
 
+export async function steerAgentTurn(payload) {
+  return sendRequest("agent.steer", payload, 30000);
+}
+
+export async function cancelAgentSteer(payload) {
+  return sendRequest("agent.steer_cancel", payload, 30000);
+}
+
 export async function answerAskQuestion(payload) {
   return sendRequest("agent.ask_answer", payload, 30000);
 }

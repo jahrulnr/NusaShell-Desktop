@@ -36,7 +36,7 @@ describe("CompletionSteerer", () => {
     // Wait for debounce + fire.
     await new Promise((r) => setTimeout(r, 600));
     expect(startedTurns).toHaveLength(1);
-    expect(startedTurns[0]).toContain("Background job completed");
+    expect(startedTurns[0]).toContain("Background job completed — information only");
     expect(startedTurns[0]).toContain("run_command");
     steerer.dispose();
   });
@@ -52,24 +52,46 @@ describe("CompletionSteerer", () => {
     steerer.dispose();
   });
 
-  it("does not start a turn when conversation has an active turn", async () => {
+  it("keeps a completion that arrives during an active turn and wakes once idle", async () => {
     idleState = false;
     const steerer = makeSteerer();
     steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
     await new Promise((r) => setTimeout(r, 600));
     expect(startedTurns).toHaveLength(0);
     expect(logs.some((l) => l.includes("skipped"))).toBe(true);
+
+    idleState = true;
+    steerer.notifyIdle();
+    await new Promise((r) => setTimeout(r, 600));
+    expect(startedTurns).toHaveLength(1);
     steerer.dispose();
   });
 
-  it("does not start a turn when isIdle is false due to composer draft/IME (#69)", async () => {
-    // Caller wires isIdle to include composer busy; steerer must cancel, not overwrite.
+  it("keeps a completion while composer draft/IME blocks a wake (#69)", async () => {
+    // Caller wires isIdle to include composer busy; steerer must defer, not overwrite.
     idleState = false;
     const steerer = makeSteerer();
     steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
     await new Promise((r) => setTimeout(r, 600));
     expect(startedTurns).toHaveLength(0);
     expect(logs.some((l) => l.includes("composer busy") || l.includes("not idle"))).toBe(true);
+    steerer.dispose();
+  });
+
+  it("drains every completion across sequential wakes instead of dropping jobs over the batch cap", async () => {
+    const steerer = makeSteerer();
+    for (let index = 0; index < 11; index += 1) {
+      steerer.onJobEnded({
+        handleId: `h${index}`,
+        conversationId: "conv-1",
+        ok: true,
+        reason: "completed",
+        toolName: `tool_${index}`,
+      });
+    }
+    await new Promise((r) => setTimeout(r, 1_250));
+    expect(startedTurns).toHaveLength(2);
+    expect(startedTurns.join("\n")).toContain("tool_10");
     steerer.dispose();
   });
 
@@ -89,6 +111,17 @@ describe("CompletionSteerer", () => {
     expect(startedTurns).toHaveLength(0);
   });
 
+  it("discards pending completions after the user stops the owning turn", async () => {
+    const steerer = makeSteerer();
+    steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
+    steerer.discard();
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    expect(startedTurns).toHaveLength(0);
+    steerer.dispose();
+  });
+
   it("includes error and output in the summary", async () => {
     const steerer = makeSteerer();
     steerer.onJobEnded({
@@ -103,6 +136,54 @@ describe("CompletionSteerer", () => {
     await new Promise((r) => setTimeout(r, 600));
     expect(startedTurns[0]).toContain("exit code 1");
     expect(startedTurns[0]).toContain("stdout");
+    steerer.dispose();
+  });
+
+  it("emits steering fired with job count when a turn is started", async () => {
+    const steerings = [];
+    const steerer = new CompletionSteerer({
+      conversationId: "conv-1",
+      isIdle: () => true,
+      startTurn: async () => {},
+      log: () => {},
+      onSteering: (s) => steerings.push(s),
+    });
+    steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
+    steerer.onJobEnded({ handleId: "h2", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t2" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(steerings).toHaveLength(1);
+    expect(steerings[0]).toMatchObject({ outcome: "fired", jobCount: 2, conversationId: "conv-1" });
+    expect(typeof steerings[0].triggeredAt).toBe("string");
+    steerer.dispose();
+  });
+
+  it("emits steering skipped with reason when not idle", async () => {
+    const steerings = [];
+    const steerer = new CompletionSteerer({
+      conversationId: "conv-1",
+      isIdle: () => false,
+      startTurn: async () => {},
+      log: () => {},
+      onSteering: (s) => steerings.push(s),
+    });
+    steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(steerings).toHaveLength(1);
+    expect(steerings[0]).toMatchObject({ outcome: "skipped", reason: "not-idle", jobCount: 1 });
+    steerer.dispose();
+  });
+
+  it("never throws when the observer fails", async () => {
+    const steerer = new CompletionSteerer({
+      conversationId: "conv-1",
+      isIdle: () => true,
+      startTurn: async () => {},
+      log: () => {},
+      onSteering: () => { throw new Error("observe down"); },
+    });
+    steerer.onJobEnded({ handleId: "h1", conversationId: "conv-1", ok: true, reason: "completed", toolName: "t" });
+    await new Promise((r) => setTimeout(r, 600));
+    // No throw; steering still happens.
     steerer.dispose();
   });
 });

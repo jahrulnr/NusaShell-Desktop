@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, readdir, writeFile, mkdir } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlTelemetryWriter } from "../src/telemetry/jsonl-telemetry-writer.js";
-import type { AgentTurnTelemetry, ProviderRequestTelemetry } from "@nusashell/application";
+import type { AgentTurnTelemetry, ProviderRequestTelemetry, SteeringTelemetry } from "@nusashell/application";
 
 const REQUEST: ProviderRequestTelemetry = {
   kind: "provider_request",
@@ -104,6 +104,26 @@ describe("JsonlTelemetryWriter", () => {
     expect(files).not.toContain("agent-turns-2026-06-01.jsonl");
     expect(files).not.toContain("provider-requests-2026-06-01.jsonl");
     expect(files).toContain("agent-turns-2026-08-06.jsonl");
+  });
+
+  it("appends steering records to their own daily file", async () => {
+    const now = () => new Date("2026-08-06T12:00:00.000Z");
+    const writer = new JsonlTelemetryWriter({ dir, now });
+    const steering: SteeringTelemetry = {
+      kind: "steering",
+      schemaVersion: 1,
+      traceId: "steer-1",
+      conversationId: "conv-1",
+      triggeredAt: "2026-08-06T12:00:00.000Z",
+      jobCount: 2,
+      outcome: "fired",
+    };
+    writer.recordSteering(steering);
+    await writer.flush();
+    const file = join(dir, "steering-2026-08-06.jsonl");
+    const lines = (await readFile(file, "utf8")).trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ kind: "steering", outcome: "fired" });
   });
 
   it("reports write failures via onError instead of throwing", async () => {

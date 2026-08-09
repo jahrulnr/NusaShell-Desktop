@@ -4,6 +4,20 @@
 document records how the shell binds it to MCP plugins, in locked order, and
 why a hard agent-vs-UI MCP pool is rejected for MVP.
 
+## Live workspace switches
+
+Changing the workspace from the Agent composer is a runtime update, not merely
+a saved UI preference. For an active foreground turn, the desktop persists the
+room workspace and notifies the live handler. The gateway switches its
+per-trace workspace immediately, so any subsequently dispatched tool uses the
+new root. At the next safe provider-round boundary, the runner appends a fresh
+hydration transcript (including `runtime_context`) before sampling again. When
+the turn seals, the complete graph replaces the room's hidden `.runtime.json`
+sidecar; it never enters conversation JSONL or the cache-stable system prefix.
+Every later provider turn replays that checkpoint. A sample already in flight is not cancelled or rewritten; its current
+tool call is routed to the newly selected workspace, and the model receives the
+snapshot before its next decision.
+
 ## The gap this closes
 
 Before this work, `conversation.workspace` was **prompt-only**: it flowed into

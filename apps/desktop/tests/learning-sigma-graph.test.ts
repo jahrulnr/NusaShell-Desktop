@@ -44,4 +44,27 @@ describe("LearningSigmaGraph reducer lifecycle", () => {
     expect(sigma.setSetting).toHaveBeenCalledTimes(4);
     expect(sigma.refresh).toHaveBeenCalledOnce();
   });
+
+  it("keeps isolated nodes visible in a large graph", () => {
+    const controller = new LearningSigmaGraph(null as never);
+    let nodeReducer: ((id: string, data: Record<string, unknown>) => Record<string, unknown>) | undefined;
+    const graph = {
+      order: 41,
+      mapNodes: () => [0],
+      degree: () => 0,
+    };
+    const sigma = {
+      setSetting: vi.fn((name, value) => {
+        if (name === "nodeReducer") nodeReducer = value;
+      }),
+      refresh: vi.fn(),
+    };
+    controller.graph = graph as never;
+    controller.sigma = sigma as never;
+    controller.cameraRatio = 1;
+
+    controller.applyReducers();
+
+    expect(nodeReducer?.("memory:one", { timestamp: 0 }).hidden).not.toBe(true);
+  });
 });

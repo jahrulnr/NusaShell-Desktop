@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AgentTurnCoordinator,
   RunAgentTurnHandler,
@@ -52,6 +52,115 @@ const RUNTIME = {
 };
 
 describe("RunAgentTurnHandler lifecycle callbacks", () => {
+  it("queues and applies a user steer to the active trace without cancelling it", async () => {
+    const { InMemoryActiveTurnProjection } = await import("../src/index.js");
+    let releaseFirst!: (result: AgentProviderResult) => void;
+    let releaseSecond!: (result: AgentProviderResult) => void;
+    const requests: AgentProviderRequest[] = [];
+    const provider: AgentProvider = {
+      id: "steerable",
+      async complete(request) {
+        requests.push(request);
+        if (requests.length === 1) {
+          return new Promise<AgentProviderResult>((resolve) => { releaseFirst = resolve; });
+        }
+        if (requests.length === 2) {
+          return new Promise<AgentProviderResult>((resolve) => { releaseSecond = resolve; });
+        }
+        return { text: "steered result" };
+      },
+    };
+    const activeTurns = new InMemoryActiveTurnProjection();
+    const handler = new RunAgentTurnHandler(
+      makeRegistry(provider), new FakeToolGateway(), "steerable", { ...RUNTIME, maxToolRounds: 3 },
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      activeTurns,
+    );
+    const running = handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-steer",
+      conversationId: "conv-steer",
+      messages: [{ role: "user", content: "original" }],
+      pluginIds: [],
+    });
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+
+    expect(handler.queueSteer({
+      conversationId: "conv-steer",
+      traceId: "trace-steer",
+      steerId: "steer-1",
+      displayText: "new direction",
+      message: { role: "user", content: "new direction" },
+    })).toBe(true);
+    expect(activeTurns.get("conv-steer")?.steers).toEqual([
+      { id: "steer-1", content: "new direction", status: "queued" },
+    ]);
+
+    releaseFirst({ text: "original result" });
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    expect(activeTurns.get("conv-steer")?.steers).toEqual([
+      { id: "steer-1", content: "new direction", status: "applied" },
+    ]);
+    expect(handler.queueSteer({
+      conversationId: "conv-steer",
+      traceId: "trace-steer",
+      steerId: "steer-2",
+      displayText: "also check Windows",
+      message: { role: "user", content: "also check Windows" },
+    })).toBe(true);
+    expect(activeTurns.get("conv-steer")?.steers).toEqual([
+      { id: "steer-2", content: "also check Windows", status: "queued" },
+    ]);
+    releaseSecond({ text: "second result" });
+    const result = await running;
+
+    expect(result.text).toBe("steered result");
+    expect(requests).toHaveLength(3);
+    expect(requests[2]?.messages.at(-1)).toEqual({ role: "user", content: "also check Windows" });
+  });
+
+  it("rejects a steer after the runner settles even while transcript persistence is pending", async () => {
+    const { InMemoryActiveTurnProjection } = await import("../src/index.js");
+    let releasePersistence!: () => void;
+    let persistenceStarted!: () => void;
+    const persistenceEntered = new Promise<void>((resolve) => { persistenceStarted = resolve; });
+    const persistenceBarrier = new Promise<void>((resolve) => { releasePersistence = resolve; });
+    const provider = new ScriptedProvider([{ text: "final answer" }]);
+    const activeTurns = new InMemoryActiveTurnProjection();
+    const handler = new RunAgentTurnHandler(
+      makeRegistry(provider), new FakeToolGateway(), "scripted", RUNTIME,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined,
+      async () => {
+        persistenceStarted();
+        await persistenceBarrier;
+      },
+      undefined, undefined, undefined, undefined,
+      activeTurns,
+    );
+    const running = handler.handle({
+      kind: "run-agent-turn",
+      traceId: "trace-settled",
+      conversationId: "conv-settled",
+      messages: [{ role: "user", content: "original" }],
+      pluginIds: [],
+    });
+    await persistenceEntered;
+
+    expect(activeTurns.get("conv-settled")?.traceId).toBe("trace-settled");
+    expect(handler.queueSteer({
+      conversationId: "conv-settled",
+      traceId: "trace-settled",
+      steerId: "too-late",
+      displayText: "late correction",
+      message: { role: "user", content: "late correction" },
+    })).toBe(false);
+
+    releasePersistence();
+    await running;
+  });
+
   it("emits onTurnStarted before the run and onTurnEnd(completed) on success", async () => {
     const provider = new ScriptedProvider([{ text: "hi" }]);
     const tools = new FakeToolGateway();

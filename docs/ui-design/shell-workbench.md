@@ -49,6 +49,17 @@ so the active workspace retains useful width. At narrow browser-preview widths
 the sidebar hides; no workspace action may depend exclusively on its expanded
 state.
 
+Every full-height operational workspace — Agent, Skills, Learning, Jobs,
+Pipelines, and Logs — sits inside the same responsive shell gutter (12–24px).
+Each remains a compact bordered workbench bay rather than touching the outer
+frame; at narrow widths the gutter reduces to the small shell spacing token.
+The inner message thread, file editor, log tail, and list panes retain their own
+scroll ownership within that shared boundary.
+
+Learning Connections uses the full remaining workbench height: its graph canvas
+stretches between the compact header and a fixed time-range footer, so the
+scrubber never hangs midway through a tall workspace.
+
 ## Home launcher
 
 Home is an app launcher, not an analytics overview. It opens directly into a

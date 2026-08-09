@@ -22,7 +22,7 @@ function itemPath(item) { return displayPath(item.path || joinPath(state.current
 function iconFor(item) { if (item.isDir) return { key: "folder", className: "folder" }; if (item.type === "image") return { key: "image", className: "image" }; if (item.type === "archive") return { key: "archive", className: "archive" }; if (item.type === "text") return { key: "code", className: "code" }; return { key: "file", className: "file" }; }
 
 function initElements() {
-  for (const id of ["files-workspace", "root-caption", "root-button", "search-form", "search-input", "refresh-button", "up-button", "new-file-button", "tree-container", "collapse-tree-button", "breadcrumbs", "folder-title", "listing-count", "listing-body", "new-folder-button", "selection-actions", "rename-button", "delete-button", "preview-pane", "preview-icon", "preview-title", "preview-subtitle", "preview-meta", "preview-content", "close-preview-button", "modal-overlay", "modal-title", "modal-description", "modal-form", "modal-name-field", "modal-input", "modal-textarea", "modal-content-field", "modal-field-label", "confirm-copy", "modal-error", "modal-cancel-button", "modal-save-button", "modal-close-button", "toast-container"]) elements[id] = $(id);
+  for (const id of ["files-workspace", "root-caption", "root-button", "search-form", "search-input", "refresh-button", "up-button", "new-file-button", "upload-button", "upload-input", "tree-container", "collapse-tree-button", "breadcrumbs", "folder-title", "listing-count", "listing-body", "new-folder-button", "selection-actions", "rename-button", "delete-button", "preview-pane", "preview-icon", "preview-title", "preview-subtitle", "preview-meta", "preview-content", "close-preview-button", "files-drop-overlay", "modal-overlay", "modal-title", "modal-description", "modal-form", "modal-name-field", "modal-input", "modal-textarea", "modal-content-field", "modal-field-label", "confirm-copy", "modal-error", "modal-cancel-button", "modal-save-button", "modal-close-button", "toast-container"]) elements[id] = $(id);
 }
 
 async function callTool(name, args = {}) {
@@ -136,14 +136,231 @@ async function handleNewFolder() { const value = await openModal({ title:"Create
 async function handleRename() { if (!state.selectedItem) return; const item = state.selectedItem; const value = await openModal({ title:"Rename", description:"The item stays in the same folder.", fieldLabel:"New name", defaultValue:item.name, submitLabel:"Rename" }); if (!value || value.name === item.name) return; try { await callTool("move", { source:toolPath(itemPath(item)), destination:toolPath(joinPath(state.currentPath, value.name)) }); toast("Renamed", "success"); refresh(); } catch (error) { toast(error.message, "error"); } }
 async function handleDelete() { if (!state.selectedItem) return; const item = state.selectedItem; const confirmed = await openModal({ title:"Delete item?", description:"Please review this destructive action.", confirm:item.name, submitLabel:"Delete", danger:true }); if (!confirmed) return; try { await callTool("delete", { path:toolPath(itemPath(item)), recursive:item.isDir }); toast("Deleted", "success"); refresh(); } catch (error) { toast(error.message, "error"); } }
 async function handleSearch(query) { const clean = query.trim(); if (!clean) { state.searchQuery=""; state.searchResults=null; renderListing(); return; } state.searchQuery=clean; try { const result=await callTool("search", { path:toolPath(state.currentPath), pattern:clean.includes("*") || clean.includes("?") ? clean : `*${clean}*` }); state.searchResults=expectArray(result, "results", "search"); state.selectedItem=null; renderListing(); updateActions(); } catch(error) { toast(error.message,"error"); } }
-function refresh() { loadListing(); loadTree(); } function goUp() { const parent=parentPath(state.currentPath); if (parent !== state.currentPath) navigateTo(parent); } function collapseTree() { state.expandedDirs=new Set(["/"]); renderTree(); }
+function refresh() { loadListing(); loadTree(); }
+function goUp() { const parent=parentPath(state.currentPath); if (parent !== state.currentPath) navigateTo(parent); } function collapseTree() { state.expandedDirs=new Set(["/"]); renderTree(); }
+
+// ===== Upload & drop (ticket #77) =====
+
+async function bytesToBase64(bytes) {
+  // Chunked to avoid call-stack overflow for large files (btoa is synchronous
+  // and per-char; chunking keeps the loop balanced).
+  const CHUNK = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function decodeUtf8Strict(bytes) {
+  if (bytes.length === 0) return "";
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+async function uploadFile(file, rel) {
+  const targetName = rel || file.name || "upload.bin";
+  const targetPath = toolPath(joinPath(state.currentPath, targetName));
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Text files are stored as UTF-8 text so they stay previewable/editable;
+  // binary content is base64-encoded and written byte-for-byte.
+  const text = decodeUtf8Strict(bytes);
+  if (text !== null) {
+    await callTool("write", { path: targetPath, content: text });
+  } else {
+    const base64 = await bytesToBase64(bytes);
+    await callTool("write", { path: targetPath, content: base64, encoding: "base64" });
+  }
+  return targetName;
+}
+
+async function handleUpload(fileList) {
+  const files = [...(fileList ?? [])];
+  if (files.length === 0) return;
+  const names = [];
+  let failed = 0;
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast(`${file.name} is larger than 10 MiB and was skipped.`, "error");
+      failed += 1;
+      continue;
+    }
+    try {
+      const name = await uploadFile(file);
+      names.push(name);
+    } catch (error) {
+      toast(`Could not upload ${file.name}: ${error.message}`, "error");
+      failed += 1;
+    }
+  }
+  if (names.length) toast(`${names.length} file${names.length === 1 ? "" : "s"} uploaded`, "success");
+  if (failed) toast(`${failed} file${failed === 1 ? "" : "s"} failed`, "error");
+  if (names.length) refresh();
+}
+
+// ===== Dropped-folder traversal (ticket #76) =====
+
+function entryToFile(entry) {
+  return new Promise((resolve) => entry.file(resolve, () => resolve(null)));
+}
+
+/**
+ * Recursively read a dropped directory via webkitGetAsEntry and collect its
+ * files. readEntries returns at most 100 entries per call, so batches are
+ * drained until empty (Chromium convention). The relative path under the
+ * dropped folder is preserved using the entry name chain.
+ * @returns {Promise<Array<{file: File, rel: string}>>}
+ */
+async function flattenDroppedDir(entry, baseRel, out) {
+  if (entry.isFile) {
+    const file = await entryToFile(entry);
+    if (file) out.push({ file, rel: baseRel });
+    return;
+  }
+  if (!entry.isDirectory) return;
+  const reader = entry.createReader();
+  for (;;) {
+    const batch = await new Promise((resolve) => reader.readEntries(resolve, () => resolve([])));
+    if (!batch.length) break;
+    for (const child of batch) {
+      const childRel = `${baseRel}/${child.name}`.replace(/^\/\/?/, "");
+      await flattenDroppedDir(child, childRel, out);
+    }
+  }
+}
+
+async function readDroppedFolders(items) {
+  const out = [];
+  for (const item of items) {
+    const entry = item.webkitGetAsEntry?.();
+    if (!entry) continue;
+    if (entry.isDirectory) await flattenDroppedDir(entry, "", out);
+    else {
+      const file = await entryToFile(entry);
+      if (file) out.push({ file, rel: file.name });
+    }
+  }
+  return out;
+}
+
+async function handleDroppedFolder(items) {
+  const entries = await readDroppedFolders(items);
+  if (entries.length === 0) {
+    toast("The dropped folder appears to be empty or unreadable.", "error");
+    return;
+  }
+  let uploaded = 0;
+  let failed = 0;
+  for (const { file, rel } of entries) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast(`${file.name} is larger than 10 MiB and was skipped.`, "error");
+      failed += 1;
+      continue;
+    }
+    try {
+      await uploadFile(file, rel);
+      uploaded += 1;
+    } catch (error) {
+      toast(`Could not upload ${file.name}: ${error.message}`, "error");
+      failed += 1;
+    }
+  }
+  if (uploaded) toast(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded from the dropped folder`, "success");
+  if (failed) toast(`${failed} file${failed === 1 ? "" : "s"} failed`, "error");
+  if (uploaded) refresh();
+}
+
+function dragDepth() { return document.getElementById("files-drop-overlay")?.dataset.depth ? Number(document.getElementById("files-drop-overlay").dataset.depth) : 0; }
+function setDragDepth(value) { const el = document.getElementById("files-drop-overlay"); if (el) el.dataset.depth = String(value); }
+function showDropOverlay(label) { const el = document.getElementById("files-drop-overlay"); if (!el) return; el.querySelector(".files-drop-label").textContent = label; el.hidden = false; }
+function hideDropOverlay() { const el = document.getElementById("files-drop-overlay"); if (el) { el.hidden = true; el.dataset.depth = "0"; } }
+
+function isFileDrag(event) {
+  const types = event.dataTransfer?.types;
+  return Boolean(types && [...types].some((t) => t === "Files" || t === "application/x-moz-file"));
+}
+
+async function handleFilesDrop(event) {
+  hideDropOverlay();
+  const items = [...(event.dataTransfer?.items ?? [])];
+  const files = [...(event.dataTransfer?.files ?? [])];
+
+  // Folder drops: Chromium gives an empty FileList but DataTransferItems with
+  // webkitGetAsEntry. Traverse the dropped directory and upload its contents,
+  // preserving relative paths (ticket #76).
+  if (files.length === 0 && items.length > 0) {
+    const hasDirEntry = items.some((item) => item.webkitGetAsEntry?.()?.isDirectory);
+    if (hasDirEntry) {
+      await handleDroppedFolder(items);
+      return;
+    }
+    const entryFiles = [];
+    for (const item of items) {
+      const entry = item.webkitGetAsEntry?.();
+      if (!entry) continue;
+      const file = await entryToFile(entry);
+      if (file) entryFiles.push(file);
+    }
+    if (entryFiles.length > 0) {
+      await handleUpload(entryFiles);
+      return;
+    }
+    toast("This surface cannot open the dropped item. Use New folder or navigate with the tree.", "error");
+    return;
+  }
+
+  if (files.length === 0) return;
+  await handleUpload(files);
+}
+
+function initDropZone() {
+  const overlay = document.getElementById("files-drop-overlay");
+  if (!overlay) return;
+
+  const onDragEnter = (event) => {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    setDragDepth(dragDepth() + 1);
+    showDropOverlay("Drop to upload into this folder");
+  };
+  const onDragOver = (event) => {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  };
+  const onDragLeave = (event) => {
+    if (!isFileDrag(event)) return;
+    setDragDepth(Math.max(0, dragDepth() - 1));
+    if (dragDepth() === 0) hideDropOverlay();
+  };
+  const onDrop = (event) => {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    void handleFilesDrop(event);
+  };
+  const onBlur = () => hideDropOverlay();
+
+  document.addEventListener("dragenter", onDragEnter);
+  document.addEventListener("dragover", onDragOver);
+  document.addEventListener("dragleave", onDragLeave);
+  document.addEventListener("drop", onDrop);
+  window.addEventListener("blur", onBlur);
+}
 
 function init() {
   initElements(); elements["root-caption"].textContent="Home";
   elements["search-form"].addEventListener("submit", e => { e.preventDefault(); handleSearch(elements["search-input"].value); }); elements["search-input"].addEventListener("search", () => { if (!elements["search-input"].value) handleSearch(""); });
   elements["refresh-button"].addEventListener("click", refresh); elements["up-button"].addEventListener("click", goUp); elements["root-button"].addEventListener("click", () => navigateTo("/")); elements["new-file-button"].addEventListener("click", handleNewFile); elements["new-folder-button"].addEventListener("click", handleNewFolder); elements["rename-button"].addEventListener("click", handleRename); elements["delete-button"].addEventListener("click", handleDelete); elements["close-preview-button"].addEventListener("click", closePreview); elements["collapse-tree-button"].addEventListener("click", collapseTree);
+  elements["upload-button"].addEventListener("click", () => elements["upload-input"].click());
+  elements["upload-input"].addEventListener("change", (event) => { void handleUpload(event.target.files); event.target.value = ""; });
+  initDropZone();
   elements["modal-form"].addEventListener("submit", e => { e.preventDefault(); if (dialog?.confirm) return closeModal({ confirmed:true }); const name=elements["modal-input"].value.trim(); if (!name) { elements["modal-error"].textContent="A name is required."; return; } closeModal({ name, content:elements["modal-textarea"].value }); }); elements["modal-cancel-button"].addEventListener("click", () => closeModal(null)); elements["modal-close-button"].addEventListener("click", () => closeModal(null)); elements["modal-overlay"].addEventListener("click", e => { if(e.target === elements["modal-overlay"]) closeModal(null); });
   document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase()==="k") { e.preventDefault(); elements["search-input"].focus(); } if(e.key === "Escape") { if(!elements["modal-overlay"].hidden) closeModal(null); else if(!elements["preview-pane"].hidden) closePreview(); } });
   refresh();
 }
 init();
+
+export { handleUpload, bytesToBase64, initDropZone, handleFilesDrop, handleDroppedFolder, readDroppedFolders };

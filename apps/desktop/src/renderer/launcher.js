@@ -7,6 +7,7 @@ import { AgentConversationController } from "./agent-conversation-controller.js"
 import { SkillsController } from "./skills-controller.js";
 import { LearningController } from "./learning-controller.js";
 import { JobsController } from "./jobs-controller.js";
+import { TelemetryController } from "./telemetry-controller.js";
 import { PipelinesController } from "./pipelines-controller.js";
 import {
   applyTextEdit,
@@ -25,10 +26,11 @@ import {
 } from "./launcher-ui.js";
 import { initWsClient, connectWs, sendRequest, onEvent, subscribe, isConnected } from "./ws-client.js";
 import { fetchPlugins, startPlugin, stopPlugin, restartPlugin, getPluginDetail, listTools, callTool, pingSystem, getVersion, installPlugin, uninstallPlugin, setPluginAutostart } from "./plugin-api.js";
-import { runAgentTurn, cancelAgentTurn, answerAskQuestion, getActiveTurn, deleteTodos } from "./agent-api.js";
+import { runAgentTurn, cancelAgentTurn, steerAgentTurn, cancelAgentSteer, answerAskQuestion, getActiveTurn, deleteTodos } from "./agent-api.js";
 import { runAcpTurn, cancelAcpTurn, getAcpSessionInfo, setAcpConfigOption, ensureAcpSession, answerAcpPermission, answerAcpAsk } from "./acp-api.js";
 import { confirmDialog, promptDialog } from "./ui-dialogs.js";
 import { showToast } from "./toast.js";
+import { initDropHandling } from "./drop-paste.js";
 
 // ============ State ============
 
@@ -44,6 +46,7 @@ let agentConversationController = null;
 let skillsController = null;
 let learningController = null;
 let jobsController = null;
+let telemetryController = null;
 let pipelinesController = null;
 let launcherSearchQuery = "";
 let launcherCategory = "All";
@@ -235,6 +238,7 @@ function switchView(viewName) {
   if (viewName === "autostart") renderAutostartList();
   if (viewName === "jobs") void jobsController?.refresh();
   if (viewName === "pipelines") void pipelinesController?.loadPipelines();
+  if (viewName === "ai-usage") void telemetryController?.refresh();
   if (viewName === "settings") void syncAppBehaviorControls();
 }
 
@@ -1339,6 +1343,8 @@ document.addEventListener("DOMContentLoaded", () => {
     shell: window.shell,
     runTurn: (messages, options) => runAgentTurn(messages, { ...options, onLog: writeRendererLog }, aiSettings),
     cancelTurn: cancelAgentTurn,
+    steerTurn: steerAgentTurn,
+    cancelSteer: cancelAgentSteer,
     answerAsk: answerAskQuestion,
     getActiveModel: activeModel,
     getActiveEffort: () => resolveRoomEffort(
@@ -1370,6 +1376,8 @@ document.addEventListener("DOMContentLoaded", () => {
   learningController = new LearningController(window.shell);
   jobsController = new JobsController({ notify: showToast });
   jobsController.initialize();
+  telemetryController = new TelemetryController();
+  void telemetryController.initialize().catch(() => {});
   pipelinesController = new PipelinesController({ notify: showToast });
 
   const renderProviderCards = () => {
@@ -1635,9 +1643,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  const bindModelOptionKeyboard = (option) => {
+  const bindModelOptionKeyboard = (option, listSelector = "#agent-model-list") => {
     option.addEventListener("keydown", (event) => {
-      const options = [...document.querySelectorAll("#agent-model-list [role=\"option\"]")];
+      const options = [...document.querySelectorAll(`${listSelector} [role="option"]`)];
       const index = options.indexOf(option);
       if (index < 0) return;
       let next = index;
@@ -1656,21 +1664,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const effortSelect = $("#settings-global-effort");
     if (!modelSelect) return;
     const activeKey = aiSettings.activeModelKey || "";
-    const current = modelSelect.value;
-    modelSelect.textContent = "";
-    const auto = document.createElement("option");
-    auto.value = "";
-    auto.textContent = "Automatic (provider default)";
-    modelSelect.appendChild(auto);
-    aiSettings.models.forEach((model) => {
-      const option = document.createElement("option");
-      option.value = model.key;
-      option.textContent = model.label + " (" + model.providerName + ")";
-      modelSelect.appendChild(option);
-    });
-    modelSelect.value = activeKey || current || "";
+    modelSelect.value = activeKey;
+    renderGlobalModelPicker();
+  };
+
+  const renderGlobalModelPicker = () => {
+    const modelSelect = $("#settings-global-model");
+    const effortSelect = $("#settings-global-effort");
+    const triggerLabel = $("#settings-global-model-trigger-label");
+    const list = $("#settings-global-model-list");
+    if (!modelSelect || !effortSelect || !triggerLabel || !list) return;
+    const selectedKey = modelSelect.value || "";
+    const selectedModel = aiSettings.models.find((model) => model.key === selectedKey);
+    triggerLabel.textContent = selectedModel
+      ? `${selectedModel.label || selectedModel.id} (${selectedModel.providerName})`
+      : "Automatic (provider default)";
     effortSelect.textContent = "";
-    const selectedModel = aiSettings.models.find((model) => model.key === (modelSelect.value || activeKey));
     const efforts = ["auto", ...new Set([...(selectedModel?.supportedEfforts || []).filter((e) => e !== "auto")])];
     efforts.forEach((effort) => {
       const option = document.createElement("option");
@@ -1678,7 +1687,43 @@ document.addEventListener("DOMContentLoaded", () => {
       option.textContent = formatEffortLabel(effort);
       effortSelect.appendChild(option);
     });
-    effortSelect.value = aiSettings.effort || "auto";
+    effortSelect.value = efforts.includes(aiSettings.effort || "auto") ? (aiSettings.effort || "auto") : "auto";
+
+    list.textContent = "";
+    const appendChoice = (modelKey, name, providerName = "") => {
+      const selected = modelKey === selectedKey;
+      const row = el("div", `agent-model-row${selected ? " is-selected" : ""}`);
+      const choose = el("button", "agent-model-choice");
+      choose.type = "button";
+      choose.setAttribute("role", "option");
+      choose.setAttribute("aria-selected", String(selected));
+      const title = el("span", "agent-model-name");
+      title.textContent = name;
+      const meta = el("span", "agent-model-meta");
+      if (providerName) {
+        const provider = el("span", "agent-model-provider");
+        provider.textContent = providerName;
+        meta.appendChild(provider);
+      }
+      choose.append(title, meta);
+      bindModelOptionKeyboard(choose, "#settings-global-model-list");
+      choose.addEventListener("click", () => {
+        modelSelect.value = modelKey;
+        renderGlobalModelPicker();
+        closeGlobalModelMenu(true);
+      });
+      row.appendChild(choose);
+      list.appendChild(row);
+    };
+
+    const query = $("#settings-global-model-search").value;
+    if (!query.trim()) appendChoice("", "Automatic (provider default)", "Provider routing");
+    const models = searchModels(aiSettings.models, $("#settings-global-model-search").value);
+    if (models.length === 0) {
+      list.appendChild(el("div", "agent-model-empty", aiSettings.models.length ? "No models match this search." : "No imported models. Open a provider and import its catalog."));
+      return;
+    }
+    models.forEach((model) => appendChoice(model.key, model.label || model.id, model.providerName));
   };
 
   const syncAiControls = () => {
@@ -2068,8 +2113,84 @@ document.addEventListener("DOMContentLoaded", () => {
     const options = [...document.querySelectorAll("#agent-model-list [role=\"option\"]")];
     options[event.key === "ArrowUp" ? options.length - 1 : 0]?.focus();
   });
+
+  let globalModelMenuRafId = 0;
+  let disposeGlobalModelMenuPositioning = null;
+
+  const positionGlobalModelMenu = () => {
+    const menu = $("#settings-global-model-menu");
+    const trigger = $("#settings-global-model-trigger");
+    if (!menu || !trigger || menu.hidden) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    if (!triggerRect || (triggerRect.width === 0 && triggerRect.height === 0)) return;
+    const menuRect = menu.getBoundingClientRect();
+    const placement = computeAgentModelMenuPlacement({
+      trigger: triggerRect,
+      menu: { width: menuRect.width, height: menuRect.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    });
+    menu.style.setProperty("--agent-model-menu-left", `${placement.left}px`);
+    menu.style.setProperty("--agent-model-menu-top", `${placement.top}px`);
+    menu.classList.toggle("is-above", placement.orientation === "above");
+    menu.classList.toggle("is-below", placement.orientation === "below");
+  };
+
+  const openGlobalModelMenu = () => {
+    const menu = $("#settings-global-model-menu");
+    const trigger = $("#settings-global-model-trigger");
+    if (menu.hidden) {
+      closeAgentModelMenu(false);
+      menu.hidden = false;
+      renderGlobalModelPicker();
+      positionGlobalModelMenu();
+      $("#settings-global-model-search").focus({ preventScroll: true });
+    }
+    trigger.setAttribute("aria-expanded", "true");
+    if (!disposeGlobalModelMenuPositioning) {
+      const scheduleReposition = () => {
+        if (globalModelMenuRafId) return;
+        globalModelMenuRafId = requestAnimationFrame(() => {
+          globalModelMenuRafId = 0;
+          positionGlobalModelMenu();
+        });
+      };
+      window.addEventListener("resize", scheduleReposition);
+      window.addEventListener("scroll", scheduleReposition, true);
+      disposeGlobalModelMenuPositioning = () => {
+        if (globalModelMenuRafId) cancelAnimationFrame(globalModelMenuRafId);
+        globalModelMenuRafId = 0;
+        window.removeEventListener("resize", scheduleReposition);
+        window.removeEventListener("scroll", scheduleReposition, true);
+        disposeGlobalModelMenuPositioning = null;
+      };
+    }
+  };
+
+  const closeGlobalModelMenu = (restoreFocus = true) => {
+    const menu = $("#settings-global-model-menu");
+    if (!menu.hidden) {
+      menu.hidden = true;
+      if (restoreFocus) $("#settings-global-model-trigger").focus({ preventScroll: true });
+    }
+    $("#settings-global-model-trigger").setAttribute("aria-expanded", "false");
+    if (disposeGlobalModelMenuPositioning) disposeGlobalModelMenuPositioning();
+  };
+
+  $("#settings-global-model-trigger").addEventListener("click", () => {
+    if ($("#settings-global-model-menu").hidden) openGlobalModelMenu();
+    else closeGlobalModelMenu();
+  });
+  $("#settings-global-model-search").addEventListener("input", renderGlobalModelPicker);
+  $("#settings-global-model-search").addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const options = [...document.querySelectorAll("#settings-global-model-list [role=\"option\"]")];
+    if (options.length === 0) return;
+    event.preventDefault();
+    options[event.key === "ArrowUp" ? options.length - 1 : 0]?.focus();
+  });
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest(".agent-model-control")) closeAgentModelMenu();
+    if (!event.target.closest(".settings-model-picker")) closeGlobalModelMenu(false);
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
@@ -2086,6 +2207,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if ($("#plugin-drawer")?.classList.contains("active")) closeDrawer();
     const wasModelMenuOpen = $("#agent-model-menu") && !$("#agent-model-menu").hidden;
     closeAgentModelMenu(wasModelMenuOpen);
+    const wasGlobalModelMenuOpen = $("#settings-global-model-menu") && !$("#settings-global-model-menu").hidden;
+    closeGlobalModelMenu(wasGlobalModelMenuOpen);
   });
 
   // Log source filters
@@ -2355,6 +2478,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   void agentConversationController.initialize().catch((error) => {
     showToast(`Could not load conversations: ${error.message || error}`, "error");
+  });
+  // Global file drop handling (#74/#75): the agent composer is the target
+  // surface only while the agent view is active; anywhere else we reject the
+  // drop with a clear toast instead of letting Chromium navigate the window.
+  initDropHandling({
+    isAgentActive: () => document.querySelector("section.view.active[data-view=\"agent\"]") !== null,
+    attachFiles: (fileList) => agentConversationController?.addAttachments(fileList),
+    notify: showToast,
   });
   // B3: tear down the controller on page unload so observers/subscriptions
   // do not leak across renderer reloads.

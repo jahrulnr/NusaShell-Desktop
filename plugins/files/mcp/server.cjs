@@ -25073,11 +25073,15 @@ var FileService = class {
    * Atomic write: write to a temp file then rename. Prevents partial writes
    * from corrupting the target on crash.
    * @param {string} filePath
-   * @param {string} content
+   * @param {string | Buffer} content
    */
   async _atomicWrite(filePath2, content) {
     const tmp = `${filePath2}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-    await import_promises2.default.writeFile(tmp, content, "utf8");
+    if (Buffer.isBuffer(content)) {
+      await import_promises2.default.writeFile(tmp, content);
+    } else {
+      await import_promises2.default.writeFile(tmp, content, "utf8");
+    }
     await import_promises2.default.rename(tmp, filePath2);
   }
   /**
@@ -25232,11 +25236,15 @@ var FileService = class {
   /**
    * @param {string} input
    * @param {string} content
+   * @param {{ encoding?: "utf8" | "base64" }} [options] When encoding is
+   *   "base64", content is decoded to a Buffer before writing so binary
+   *   uploads survive byte-for-byte (used by the Files UI upload/drop path).
    */
-  async writeFile(input, content) {
+  async writeFile(input, content, options = {}) {
     const filePath2 = resolvePath(this.root, input);
     await import_promises2.default.mkdir(import_node_path2.default.dirname(filePath2), { recursive: true });
-    await this._atomicWrite(filePath2, content);
+    const payload = options.encoding === "base64" ? Buffer.from(content, "base64") : content;
+    await this._atomicWrite(filePath2, payload);
     return { path: relativePosix(this.root, filePath2, import_node_path2.default.basename(filePath2)), written: true };
   }
   /**
@@ -26884,7 +26892,7 @@ var schemas = {
   list: external_exports.object({ path: rootPath }).strict(),
   tree: external_exports.object({ path: rootPath, depth, exclude: excludeGlobs, includeFiles: external_exports.boolean().default(true) }).strict(),
   read: external_exports.object({ path: filePath, head, tail, start: startLine, end: endLine, lineNumbers, maxBytes }).strict(),
-  write: external_exports.object({ path: filePath, content: external_exports.string().max(10 * 1024 * 1024) }).strict(),
+  write: external_exports.object({ path: filePath, content: external_exports.string().max(10 * 1024 * 1024), encoding: external_exports.enum(["utf8", "base64"]).default("utf8") }).strict(),
   mkdir: external_exports.object({ path: filePath }).strict(),
   move: external_exports.object({ source: filePath, destination: filePath }).strict(),
   copy: external_exports.object({ source: filePath, destination: filePath }).strict(),
@@ -26955,7 +26963,8 @@ var FILES_TOOLS = Object.freeze([
   }, ["path"]),
   descriptor("write", "Create or overwrite a file. Parent directories are created automatically.", {
     path: stringProperty("File path relative to the files plugin root (user home by default)."),
-    content: { type: "string", description: "File content (UTF-8 text, max 10 MB)." }
+    content: { type: "string", description: "File content (UTF-8 text, max 10 MB). When encoding is base64, the Base64-encoded bytes to decode." },
+    encoding: { type: "string", enum: ["utf8", "base64"], description: "How to interpret content (default utf8). Use base64 for binary uploads.", default: "utf8" }
   }, ["path", "content"], false),
   descriptor("mkdir", "Create an empty directory. Missing parent directories are created automatically.", {
     path: stringProperty("Directory path relative to the files plugin root (user home by default).")
@@ -27077,7 +27086,7 @@ async function callFilesTool(service, name, rawArguments = {}, contextEngine = n
         maxBytes: input.maxBytes
       }) };
     case "write":
-      return await service.writeFile(input.path, input.content);
+      return await service.writeFile(input.path, input.content, { encoding: input.encoding });
     case "mkdir":
       return await service.makeDir(input.path);
     case "move":
@@ -27249,7 +27258,7 @@ async function main() {
   const contextEngine = new ContextEngine(service.root);
   const retrievalEngine = new RetrievalEngine(service.root);
   const server = new Server(
-    { name: "nusashell-files", version: "0.1.0" },
+    { name: "nusashell-files", version: "0.1.1" },
     { capabilities: { tools: {}, prompts: {}, resources: {} } }
   );
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({

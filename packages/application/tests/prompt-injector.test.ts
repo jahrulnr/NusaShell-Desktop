@@ -194,31 +194,19 @@ describe("injectPrompts", () => {
     expect(withEmpty).toHaveLength(3);
   });
 
-  it("applies template substitution to the subagent prompt", () => {
+  it("applies template substitution to subagent routing vars (used by the execution prompt)", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "hi" }];
     const varsWithSubagents: PromptVars = {
       ...vars,
       availableSubagents: "cursor, gemini",
       defaultSubagent: "gemini",
     };
-    const subagentPrompt = "Available subagents: {{available_subagents}}. Default: {{default_subagent}}.";
-    const result = inject(prompts, varsWithSubagents, messages, undefined, undefined, subagentPrompt);
-    const subagentMessage = result.find(
-      (m) => typeof m.content === "string" && m.content.includes("Available subagents:"),
-    ) as { content: string } | undefined;
-    expect(subagentMessage).toBeDefined();
-    expect(subagentMessage!.content).toBe("Available subagents: cursor, gemini. Default: gemini.");
-    expect(subagentMessage!.content).not.toContain("{{");
-  });
-
-  it("injects subagent prompt after static prompts and before user prompt", () => {
-    const messages: AgentMessage[] = [{ role: "user", content: "hi" }];
-    const subagentPrompt = "Subagent delegation rules.";
-    const result = inject(prompts, vars, messages, undefined, undefined, subagentPrompt);
-    expect(result).toHaveLength(4);
-    expect(result[0]).toEqual({ role: "system", content: "You are the NusaShell agent." });
-    expect(result[1]).toEqual({ role: "system", content: "Use tool_list to discover tools." });
-    expect(result[2]).toEqual({ role: "system", content: "Subagent delegation rules." });
+    const result = inject(prompts, varsWithSubagents, messages);
+    // Vars stay available in PromptVars for applyVars callers (execution
+    // prompt) and runtime_context snapshot; injectPrompts no longer renders a
+    // delegation system message.
+    expect(result).toHaveLength(3);
+    expect(result[2]).toEqual({ role: "user", content: "hi" });
   });
 
   it("does not inject TODO into any user message (todo stays a normal injected flag per REV2)", () => {
@@ -238,17 +226,17 @@ describe("injectPrompts", () => {
 
   it("skips todo block when todoPrompt is undefined or empty", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "hi" }];
-    const without = injectPrompts(prompts, vars, messages, undefined, undefined, undefined, undefined).messages;
-    const withEmpty = injectPrompts(prompts, vars, messages, undefined, undefined, undefined, "").messages;
+    const without = injectPrompts(prompts, vars, messages, undefined, undefined, undefined).messages;
+    const withEmpty = injectPrompts(prompts, vars, messages, undefined, undefined, "").messages;
     expect(without).toEqual(withEmpty);
     expect(withEmpty).toHaveLength(3);
   });
 
   it("reports hasTodo in the injection summary", () => {
     const messages: AgentMessage[] = [{ role: "user", content: "hi" }];
-    const withTodo = injectPrompts(prompts, vars, messages, undefined, undefined, undefined, "CURRENT TASKS\n[ ] x");
+    const withTodo = injectPrompts(prompts, vars, messages, undefined, undefined, "CURRENT TASKS\n[ ] x");
     expect(withTodo.summary.hasTodo).toBe(true);
-    const without = injectPrompts(prompts, vars, messages, undefined, undefined, undefined, undefined);
+    const without = injectPrompts(prompts, vars, messages);
     expect(without.summary.hasTodo).toBe(false);
   });
 
@@ -258,7 +246,7 @@ describe("injectPrompts", () => {
     const todo = "CURRENT TASKS\n[ ] finish the migration";
     const result = injectPrompts(
       prompts, vars, messages,
-      undefined, undefined, undefined, todo,
+      undefined, undefined, todo,
       skills,
     );
     const allContents = result.messages.map((m) => String(m.content));
@@ -274,19 +262,17 @@ describe("injectPrompts", () => {
       [{ role: "user", content: "hello" }],
       "user-specific instructions",
       "turn memory",
-      "subagent rules",
       "todo",
       "skills",
       undefined,
     );
 
     expect(result.promptCache).toEqual({ mode: "auto", stableSystemMessages: 2 });
-    // Memory/todo/skills/mcp-live are no longer rendered; only static + subagent +
+    // Memory/todo/skills/mcp-live are no longer rendered; only static +
     // user-instructions + developer.
-    expect(result.messages.slice(0, 4).map((message) => message.content)).toEqual([
+    expect(result.messages.slice(0, 3).map((message) => message.content)).toEqual([
       "You are the NusaShell agent.",
       "Use tool_list to discover tools.",
-      "subagent rules",
       "user-specific instructions",
     ]);
   });
@@ -298,11 +284,11 @@ describe("injectPrompts", () => {
     ];
     const turnA = injectPrompts(
       richPrompts, vars, [{ role: "user", content: "msg A" }],
-      "instructions", "memory", "subagent", "todo", "skills",
+      "instructions", "memory", "todo", "skills",
     );
     const turnB = injectPrompts(
       richPrompts, vars, [{ role: "user", content: "msg B" }],
-      "instructions", "memory", "subagent", "todo", "skills",
+      "instructions", "memory", "todo", "skills",
     );
     const stableCount = turnA.promptCache.stableSystemMessages ?? 0;
     const stableA = turnA.messages.slice(0, stableCount);
@@ -312,7 +298,6 @@ describe("injectPrompts", () => {
       "You are the NusaShell agent.",
       "Use tool_list to discover tools.",
     ]);
-    expect(turnA.messages.slice(stableCount)[0]).toMatchObject({ role: "system", content: "subagent" });
   });
 
   it("changing a volatile var does not touch the stable prefix", () => {

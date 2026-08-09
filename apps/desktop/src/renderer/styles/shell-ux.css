@@ -500,6 +500,9 @@
   margin: 0 6px;
   color: #435064;
 }
+.agent-context-update-marker {
+  color: #78c6a1;
+}
 .agent-model-step {
   display: flex;
   align-items: center;
@@ -1751,4 +1754,49 @@ button { min-width: 0; }
   .agent-composer-footer { grid-template-columns: minmax(0, 1fr); }
   .agent-composer-actions { justify-content: flex-end; }
   .agent-provider-status { max-width: none; flex: 1 1 auto; }
+}
+/* ===== File drop overlay (ticket #74) ===== */
+.shell-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none; /* never intercepts the drop itself */
+  background: rgba(9, 16, 24, 0.82);
+  backdrop-filter: blur(3px);
+  color: #dbe7f5;
+  text-align: center;
+  animation: shell-drop-overlay-in 120ms ease-out;
+}
+.shell-drop-overlay[hidden] { display: none; }
+.shell-drop-overlay-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1.5px dashed rgba(150, 180, 220, 0.6);
+  border-radius: 14px;
+  color: #9fc2f2;
+  margin-bottom: 4px;
+}
+.shell-drop-overlay-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f2f7ff;
+}
+.shell-drop-overlay-hint {
+  font-size: 12.5px;
+  color: #93a5bd;
+}
+@keyframes shell-drop-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell-drop-overlay { animation: none; }
 }

@@ -1,4 +1,5 @@
-import { clipboard, contextBridge, ipcRenderer } from "electron";
+import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
+import { resolvePathForFile } from "./path-for-file.js";
 import type { PublicAiRegistry, ReasoningEffort, SaveAiProviderInput } from "../shared/ai-contract.js";
 import { checkEventSkew } from "../shared/event-skew-checker.js";
 import type {
@@ -41,6 +42,19 @@ export interface ShellApi {
   readonly build: "dev" | "production";
   callTool(pluginId: string, toolName: string, args: Record<string, unknown>): Promise<unknown>;
   listTools(pluginId: string): Promise<unknown>;
+  /**
+   * Resolve the absolute path of a File for the given path that arrived via a
+   * drag & drop / file input. Electron 33 removed `File.path`; the supported
+   * API is `webUtils.getPathForFile`, exposed here behind a narrow guard so
+   * renderer code can never pass an arbitrary object.
+   * Returns null when the argument is not a File or the path is unavailable.
+   *
+   * Kept as a ready-to-use API for future path-based flows (e.g. folder drop,
+   * workspace picker) — it is intentionally not consumed by the renderer yet:
+   * attachment paths (agent composer + Files plugin) read bytes via
+   * `file.arrayBuffer()` instead. Do not delete as dead code.
+   */
+  getPathForFile(file: unknown): string | null;
   openPlugin(pluginId: string, name: string, icon: string, installPath: string, options?: PluginWindowOptionsInput): Promise<void>;
   closePlugin(pluginId: string): Promise<void>;
   readonly windowControls: {
@@ -187,6 +201,9 @@ const api: ShellApi = {
   },
   listTools(pluginId) {
     return ipcRenderer.invoke("tool:list", pluginId);
+  },
+  getPathForFile(file) {
+    return resolvePathForFile(file, (f) => webUtils.getPathForFile(f) ?? null);
   },
   openPlugin(pluginId, name, icon, installPath, options) {
     return ipcRenderer.invoke("window:open-plugin", pluginId, name, icon, installPath, options);

@@ -10,6 +10,8 @@ import type {
   SetPluginAutostartCommand,
   RunAgentTurnCommand,
   CancelAgentTurnCommand,
+  SteerAgentTurnCommand,
+  CancelAgentSteerCommand,
   AnswerAskQuestionCommand,
   ManageTodosCommand,
   KillToolJobCommand,
@@ -31,13 +33,28 @@ import type {
   SetAcpConfigOptionCommand,
   EnsureAcpSessionCommand,
   ProbeAcpProviderCommand,
+  RecordSteeringCommand,
   ToolJobListQuery,
 } from "@nusashell/application";
 
 export function mapToCommand(request: ParsedRequest):
-  | { kind: "command"; command: StartPluginCommand | StopPluginCommand | RestartPluginCommand | InstallPluginCommand | UninstallPluginCommand | SetPluginAutostartCommand | CallToolCommand | CancelToolCallCommand | RunAgentTurnCommand | CancelAgentTurnCommand | AnswerAskQuestionCommand | ManageTodosCommand | KillToolJobCommand | AddJobCommand | UpdateJobCommand | SetJobEnabledCommand | RunJobNowCommand | CancelJobCommand | RemoveJobCommand | AddPipelineCommand | UpdatePipelineCommand | RemovePipelineCommand | RunPipelineCommand | CancelPipelineCommand | RunAcpTurnCommand | CancelAcpTurnCommand | AnswerAcpPermissionCommand | AnswerAcpAskCommand | SetAcpConfigOptionCommand | EnsureAcpSessionCommand | ProbeAcpProviderCommand }
+  | { kind: "command"; command: StartPluginCommand | StopPluginCommand | RestartPluginCommand | InstallPluginCommand | UninstallPluginCommand | SetPluginAutostartCommand | CallToolCommand | CancelToolCallCommand | RunAgentTurnCommand | CancelAgentTurnCommand | SteerAgentTurnCommand | CancelAgentSteerCommand | AnswerAskQuestionCommand | ManageTodosCommand | KillToolJobCommand | AddJobCommand | UpdateJobCommand | SetJobEnabledCommand | RunJobNowCommand | CancelJobCommand | RemoveJobCommand | AddPipelineCommand | UpdatePipelineCommand | RemovePipelineCommand | RunPipelineCommand | CancelPipelineCommand | RunAcpTurnCommand | CancelAcpTurnCommand | AnswerAcpPermissionCommand | AnswerAcpAskCommand | SetAcpConfigOptionCommand | EnsureAcpSessionCommand | ProbeAcpProviderCommand | RecordSteeringCommand }
   | { kind: "query"; query?: ToolJobListQuery } {
   switch (request.method) {
+    case "telemetry.record_steering": {
+      const payload = request.payload as RecordSteeringCommand;
+      return {
+        kind: "command",
+        command: {
+          kind: "telemetry.record-steering",
+          ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
+          triggeredAt: payload.triggeredAt,
+          jobCount: payload.jobCount,
+          outcome: payload.outcome,
+          ...(payload.outcome === "skipped" && payload.reason ? { reason: payload.reason } : {}),
+        } as RecordSteeringCommand,
+      };
+    }
     case "plugin.start":
       return {
         kind: "command",
@@ -135,6 +152,28 @@ export function mapToCommand(request: ParsedRequest):
           kind: "cancel-agent-turn",
           traceId: request.payload.traceId,
         } as CancelAgentTurnCommand,
+      };
+    case "agent.steer":
+      return {
+        kind: "command",
+        command: {
+          kind: "steer-agent-turn",
+          conversationId: request.payload.conversationId,
+          traceId: request.payload.traceId,
+          steerId: request.payload.steerId,
+          displayText: request.payload.displayText,
+          message: request.payload.message,
+        } as SteerAgentTurnCommand,
+      };
+    case "agent.steer_cancel":
+      return {
+        kind: "command",
+        command: {
+          kind: "cancel-agent-steer",
+          conversationId: request.payload.conversationId,
+          traceId: request.payload.traceId,
+          steerId: request.payload.steerId,
+        } as CancelAgentSteerCommand,
       };
     case "agent.ask_answer":
       return {

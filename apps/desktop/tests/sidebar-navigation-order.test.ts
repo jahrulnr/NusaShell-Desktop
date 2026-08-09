@@ -31,6 +31,7 @@ describe("sidebar navigation order", () => {
       "ai-providers",
       "jobs",
       "pipelines",
+      "ai-usage",
       "logs",
     ]);
   });
@@ -44,7 +45,7 @@ describe("sidebar navigation order", () => {
   });
 
   it("keeps overview views free of large page headers while retaining their toolbars", () => {
-    for (const viewName of ["home", "agent", "skills", "learning", "plugins", "autostart", "ai-providers", "logs", "jobs", "pipelines", "settings"]) {
+    for (const viewName of ["home", "agent", "skills", "learning", "plugins", "autostart", "ai-providers", "logs", "jobs", "pipelines", "ai-usage", "settings"]) {
       const section = rendererMarkup.match(new RegExp(`<section[^>]*data-view="${viewName}"[\\s\\S]*?<\\/section>`))?.[0] ?? "";
       expect(section).not.toMatch(/<(?:h1|p|div)[^>]*class="[^"]*(?:page-title|subtitle|agent-kicker|home-kicker|greeting)[^"]*"/);
     }

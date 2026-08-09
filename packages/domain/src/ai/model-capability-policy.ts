@@ -1,5 +1,8 @@
-import type { ReasoningEffort } from "@nusashell/application";
-import { resolveModelContextDefaults } from "@nusashell/application";
+import type { ReasoningEffort } from "./reasoning-effort.js";
+import {
+  positiveInteger,
+  resolveModelContextDefaults,
+} from "../agent/context-window.js";
 
 export interface ModelCapabilities {
   readonly contextWindow?: number;
@@ -130,8 +133,4 @@ export function heuristicModelSupportsVision(modelId: string): boolean {
     "claude-3", "claude-4", "claude-sonnet", "claude-opus", "claude-haiku",
     "gemini", "qwen2-vl", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
   ].some((marker) => model.includes(marker));
-}
-
-function positiveInteger(value: number | undefined): value is number {
-  return Number.isInteger(value) && (value ?? 0) > 0;
 }

@@ -1,6 +1,7 @@
 import type { AgentToolDefinition } from "../../agent/ports/agent-provider.port.js";
 import type { AgentToolGateway, AgentTurnContext } from "../../agent/ports/agent-tool-gateway.port.js";
 import type { McpAgentToolGateway } from "../../agent/services/mcp-agent-tool-gateway.js";
+import { isJobToolDenied } from "@nusashell/domain";
 
 /**
  * Tools a scheduled job may NOT touch this ship. Jobs must not mutate the
@@ -8,22 +9,10 @@ import type { McpAgentToolGateway } from "../../agent/services/mcp-agent-tool-ga
  * must not manage other jobs/pipelines (recursion guard), spawn subagents
  * (headless ACP turns can stall on tool-approval), or start/stop MCP plugins
  * (failure-complexity reducer: avoid unapproved runtime changes).
+ *
+ * The denylist itself is a domain policy (JOB_DENYLIST, ticket #81, Klaster
+ * B) — a failure-complexity reducer, not a security boundary.
  */
-const JOB_DENYLIST = new Set([
-  "memory",
-  "skill_manage",
-  "skill_list",
-  "skill_search",
-  "skill_read",
-  "ask_question",
-  "job",
-  "pipeline",
-  "subagent",
-  "mcp_register",
-  "mcp_unregister",
-  "mcp_enable",
-  "mcp_disable",
-]);
 
 /**
  * Restricted gateway for headless job agent turns. Allows MCP plugin tool
@@ -52,7 +41,7 @@ export class JobAgentToolGateway implements AgentToolGateway {
 
   async listTools(pluginIds: readonly string[], turnId: string): Promise<readonly AgentToolDefinition[]> {
     const all = await this.inner.listTools(pluginIds, turnId);
-    return all.filter((tool) => !JOB_DENYLIST.has(tool.name));
+    return all.filter((tool) => !isJobToolDenied(tool.name));
   }
 
   async execute(
@@ -62,7 +51,7 @@ export class JobAgentToolGateway implements AgentToolGateway {
     turnId: string,
     callId?: string,
   ): Promise<unknown> {
-    if (JOB_DENYLIST.has(name)) {
+    if (isJobToolDenied(name)) {
       throw new Error(`Tool "${name}" is not allowed in a scheduled job`);
     }
     return this.inner.execute(name, args, requestId, turnId, callId);

@@ -8,6 +8,7 @@ import {
   ToolCancelRequestSchema,
   AgentRunRequestSchema,
   AgentCancelRequestSchema,
+  AgentSteerRequestSchema,
   AgentAskAnswerRequestSchema,
 } from "../src/index.js";
 
@@ -142,6 +143,35 @@ describe("Request schemas", () => {
         id: "req_agent_cancel",
         method: "agent.cancel",
         payload: {},
+      }).success).toBe(false);
+    });
+  });
+
+  describe("agent.steer", () => {
+    it("requires a user message bound to the active conversation and trace", () => {
+      expect(AgentSteerRequestSchema.safeParse({
+        kind: "request",
+        id: "req_agent_steer",
+        method: "agent.steer",
+        payload: {
+          conversationId: "conv-1",
+          traceId: "trace-1",
+          steerId: "steer-1",
+          displayText: "Change direction",
+          message: { role: "user", content: "Change direction" },
+        },
+      }).success).toBe(true);
+      expect(AgentSteerRequestSchema.safeParse({
+        kind: "request",
+        id: "req_agent_steer",
+        method: "agent.steer",
+        payload: {
+          conversationId: "conv-1",
+          traceId: "trace-1",
+          steerId: "steer-1",
+          displayText: "Change direction",
+          message: { role: "assistant", content: "invalid" },
+        },
       }).success).toBe(false);
     });
   });

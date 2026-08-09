@@ -4,6 +4,7 @@ import type { SkillRegistryPort } from "../../skill/ports/skill-registry.port.js
 import type { McpLiveSnapshot } from "./mcp-live-prompt-formatter.js";
 import { formatMemoryPrompt } from "./memory-prompt-formatter.js";
 import { buildSkillsCatalogPrompt } from "./skills-catalog-formatter.js";
+import { HYDRATE_TOOL_CALL_PREFIX } from "@nusashell/domain";
 
 /**
  * Ephemeral synthetic tool transcript representing a current read-only
@@ -20,9 +21,9 @@ import { buildSkillsCatalogPrompt } from "./skills-catalog-formatter.js";
  * skill_list, mcp_list, tool_list, and future capability snapshots).
  *
  * This builder NEVER executes the gateway: it precomputes results from the
- * read-only sources of truth. It is ephemeral BY CONTRACT — callers must not
- * persist the returned messages into durable conversation history, renderer
- * events, or compaction summaries.
+ * read-only sources of truth. Callers keep the latest complete exchange as a
+ * hidden provider checkpoint, separate from visible conversation history and
+ * excluded from compaction summaries.
  *
  * Option B ordering: callers place this transcript AFTER a real user message
  * (or compaction summary) and BEFORE the model's own output.
@@ -34,6 +35,8 @@ export class RuntimeHydrationBuilder {
       readonly skills?: SkillRegistryPort;
       readonly mcpLive: McpLiveSnapshot;
       readonly runtimeContext?: RuntimeContextSnapshot;
+      /** Fresh incomplete TODO snapshot for the owning conversation. */
+      readonly todoPrompt?: string;
     },
   ) {}
 
@@ -50,6 +53,7 @@ export class RuntimeHydrationBuilder {
       await this.readSkills(),
       { name: "mcp_list", args: {}, content: formatMcpList(this.source.mcpLive) },
       { name: "tool_list", args: {}, content: formatToolList(this.source.mcpLive) },
+      ...(this.source.todoPrompt ? [{ name: "todo_list", args: {}, content: this.source.todoPrompt }] : []),
     ];
 
     const calls: AgentToolCall[] = slots.map((slot, index) => ({
@@ -109,8 +113,33 @@ export class RuntimeHydrationBuilder {
   }
 }
 
-/** Reserved, non-persisted call-ID namespace for the hydration transcript. */
-export const HYDRATE_ID_PREFIX = "hydrate:";
+/** Reserved call-ID namespace for the hidden hydration transcript. */
+export const HYDRATE_ID_PREFIX = HYDRATE_TOOL_CALL_PREFIX;
+
+/**
+ * Return the latest complete hydration exchange from a provider transcript.
+ * A partial graph is never persisted because providers require every
+ * assistant tool call to have exactly one matching tool result.
+ */
+export function extractLatestRuntimeHydration(messages: readonly AgentMessage[]): readonly AgentMessage[] {
+  for (let assistantIndex = messages.length - 1; assistantIndex >= 0; assistantIndex -= 1) {
+    const assistant = messages[assistantIndex];
+    if (assistant?.role !== "assistant" || !assistant.toolCalls?.length) continue;
+    if (!assistant.toolCalls.every((call) => call.id.startsWith(HYDRATE_ID_PREFIX))) continue;
+
+    const expectedIds = new Set(assistant.toolCalls.map((call) => call.id));
+    if (expectedIds.size !== assistant.toolCalls.length) continue;
+    const exchange: AgentMessage[] = [assistant];
+    for (let index = assistantIndex + 1; index < messages.length; index += 1) {
+      const message = messages[index];
+      if (message?.role !== "tool" || !expectedIds.has(message.toolCallId)) break;
+      expectedIds.delete(message.toolCallId);
+      exchange.push(message);
+      if (expectedIds.size === 0) return exchange;
+    }
+  }
+  return [];
+}
 
 /** Read-only runtime context snapshot for the `runtime_context` synthetic call. */
 export interface RuntimeContextSnapshot {
@@ -118,8 +147,20 @@ export interface RuntimeContextSnapshot {
   readonly environment: string;
   readonly runtimeOs: string;
   readonly workspace?: string;
-  readonly availableSubagents?: string;
-  readonly defaultSubagent?: string;
+  /** Subagent routing + delegation guide, resolved fresh per snapshot. */
+  readonly subagents?: SubagentSnapshot;
+}
+
+/**
+ * Subagent capability snapshot embedded in the `runtime_context` JSON.
+ * `available`/`default` mirror the routing prompt vars; `delegationGuide`
+ * carries the (interpolated) delegation guide loaded from disk — data, not a
+ * system-prompt injection.
+ */
+export interface SubagentSnapshot {
+  readonly available: string;
+  readonly default: string;
+  readonly delegationGuide?: string;
 }
 
 function formatMcpList(snapshot: McpLiveSnapshot): string {

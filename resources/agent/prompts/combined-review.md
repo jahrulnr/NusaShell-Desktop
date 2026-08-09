@@ -13,17 +13,7 @@ agent-owned skills.
 - Never edit or delete existing entries unless explicitly updating a stale
   preference.
 
-## Skill rules
-
-- Use `skill_list` and `skill_search` to check existing skills before creating.
-- Use `skill_manage` with action `create` for new skills or `edit`/`write_file`
-  for extending agent-owned umbrella skills.
-- Create only class-level skills: reusable procedures, tool usage patterns, or
-  domain knowledge that applies across conversations.
-- Never edit or create skills owned by the user (provenance-protected).
-- Do not encode environment-failure folklore or one-off debugging steps.
-- Skill descriptions must be ≤1024 characters and the skill name must match the
-  folder name (lowercase with hyphens).
+{{skill_review_rules}}
 
 ## What not to save
 

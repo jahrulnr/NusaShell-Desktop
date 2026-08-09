@@ -69,6 +69,14 @@ describe("FilesystemPromptLoader", () => {
     expect(compact).toContain("Compaction summary");
   });
 
+  it("composes the shared skill policy into skill-capable background reviews", async () => {
+    const loader = new FilesystemPromptLoader(fixturesRoot);
+
+    await expect(loader.loadReviewPrompt("memory")).resolves.toBe("Memory review fixture.\n");
+    await expect(loader.loadReviewPrompt("skill")).resolves.toContain("Shared skill policy fixture.");
+    await expect(loader.loadReviewPrompt("combined")).resolves.toContain("Shared skill policy fixture.");
+  });
+
   it("returns undefined when compact prompt file is missing", async () => {
     const loader = new FilesystemPromptLoader(join(fixturesRoot, "..", "no-such-dir"));
     await expect(loader.loadCompactPrompt()).resolves.toBeUndefined();

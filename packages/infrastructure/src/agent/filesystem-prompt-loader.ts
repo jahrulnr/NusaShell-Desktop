@@ -7,6 +7,8 @@ const COMPACT_PROMPT_FILE = "compact.md";
 const SUBAGENT_EXECUTION_PROMPT_FILE = "subagent.md";
 const SUBAGENT_DELEGATION_PROMPT_FILE = "subagent-delegation.md";
 const CONTINUE_PROMPT_FILE = "continue.md";
+const SKILL_REVIEW_RULES_FILE = "skill-review-rules.md";
+const SKILL_REVIEW_RULES_PLACEHOLDER = "{{skill_review_rules}}";
 const REVIEW_PROMPT_FILES: Record<ReviewPromptKind, string> = {
   memory: "memory-review.md",
   skill: "skill-review.md",
@@ -97,9 +99,19 @@ export class FilesystemPromptLoader implements PromptLoaderPort {
     const cached = this.cachedReview.get(kind);
     if (cached) return cached;
     const fileName = REVIEW_PROMPT_FILES[kind];
-    const content = await this.readPromptFile(fileName);
+    const base = await this.readPromptFile(fileName);
+    const content = kind === "memory"
+      ? base
+      : this.composeSkillReviewPrompt(base, await this.readPromptFile(SKILL_REVIEW_RULES_FILE), fileName);
     this.cachedReview.set(kind, content);
     return content;
+  }
+
+  private composeSkillReviewPrompt(base: string, rules: string, fileName: string): string {
+    if (!base.includes(SKILL_REVIEW_RULES_PLACEHOLDER)) {
+      throw new Error(`Missing ${SKILL_REVIEW_RULES_PLACEHOLDER} in review prompt: ${fileName}`);
+    }
+    return base.replace(SKILL_REVIEW_RULES_PLACEHOLDER, rules.trim());
   }
 
   private async readPromptFile(name: string): Promise<string> {

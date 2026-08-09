@@ -5,9 +5,25 @@ import type {
   AiProviderSettings,
   AiProviderType,
   AiRegistrySettings,
-  ReasoningEffort,
 } from "../shared/ai-contract.js";
 import { inferProviderType, providerDefinition } from "./ai-provider-definitions.js";
+import {
+  DEFAULT_MAX_INPUT_TOKENS,
+  DEFAULT_RESERVE_TOKENS,
+  isChatSelectable,
+  normalizeTask,
+  normalizeEfforts,
+  normalizeEffort,
+  integerInRange,
+  modes,
+  addUnique,
+  positiveIntegerOrZero,
+  basenameLabel,
+  metaContextWindow,
+  findContextLength,
+  text,
+  record,
+} from "@nusashell/domain";
 
 export type {
   AgentModelOption,
@@ -17,29 +33,10 @@ export type {
   ReasoningEffort,
 } from "../shared/ai-contract.js";
 
-const efforts: readonly ReasoningEffort[] = ["auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-/**
- * Fresh-install / missing-key defaults for the compaction cost ceiling.
- * Existing saved `ai-settings.json` values are preserved by `normalizeRegistryState`
- * (the default only applies when the key is absent or invalid). These defaults
- * match the cheap-agentic p10 model window (200k) so long tasks are usable
- * out of the box without forcing every user to open Settings.
- */
-export const DEFAULT_MAX_INPUT_TOKENS = 200_000;
-export const DEFAULT_RESERVE_TOKENS = 16_000;
-
-const nonChatTasks = new Set([
-  "embedding", "embeddings", "text-to-speech", "speech-to-text", "tts", "stt",
-  "transcription", "translation", "image-generation", "video-generation",
-  "moderation", "rerank", "reranking", "classification", "ocr",
-]);
-const nonChatMarkers = [
-  "embedding", "embed-", "-embed", "/embed", "rerank", "re-rank", "moderation",
-  "transcribe", "transcription", "whisper", "text-to-speech", "speech-to-text",
-  "-tts", "/tts", "tts-", "-stt", "/stt", "stt-", "gpt-image", "dall-e",
-  "image-generation", "imagegen", "stable-diffusion", "sdxl", "video-generation",
-];
+// Model-catalog policy (token defaults + selectability heuristics) moved to
+// @nusashell/domain (ticket #83, Klaster D); re-exported so the public API
+// stays stable.
+export { DEFAULT_MAX_INPUT_TOKENS, DEFAULT_RESERVE_TOKENS } from "@nusashell/domain";
 
 export function normalizeRegistryState(raw: unknown): AiRegistrySettings {
   const value = record(raw);
@@ -368,7 +365,7 @@ async function fetchOllamaShow(
     const supportsTools = capabilitiesList.some((cap) => text(cap).toLowerCase() === "tools")
       || text(capabilities.tools).toLowerCase() === "true"
       || undefined;
-    const numCtx = positiveInteger(parameters.num_ctx)
+    const numCtx = positiveIntegerOrZero(parameters.num_ctx)
       || findContextLength(modelInfo)
       || 0;
     return {
@@ -381,18 +378,6 @@ async function fetchOllamaShow(
   } finally {
     clearTimeout(timer);
   }
-}
-
-function findContextLength(modelInfo: Record<string, unknown>): number {
-  for (const value of Object.values(modelInfo)) {
-    if (typeof value === "number" && value > 0) continue;
-    const str = text(value).toLowerCase();
-    if (str.includes("context_length") || str.includes("context_length")) {
-      const match = str.match(/(\d{3,})/);
-      if (match) return positiveInteger(Number(match[1]));
-    }
-  }
-  return 0;
 }
 
 async function enrichLlamaCppModels(
@@ -424,7 +409,7 @@ async function enrichLlamaCppModels(
       if (typeof modalities.vision === "boolean") propsVision = modalities.vision;
       else if (Array.isArray(root.modalities) && (root.modalities as unknown[]).some((m) => text(m).toLowerCase() === "vision")) propsVision = true;
       const defaultGen = record(root.default_generation_settings);
-      propsNctx = positiveInteger(defaultGen.n_ctx) || undefined;
+      propsNctx = positiveIntegerOrZero(defaultGen.n_ctx) || undefined;
     }
   } catch {
     // Best-effort: skip props enrich.
@@ -521,9 +506,9 @@ function normalizeImportedModel(value: unknown): AiModelSettings | null {
     id,
     label: text(item.display_name) || text(item.name) || basenameLabel(id),
     task: normalizeTask(text(item.task), text(item.type)),
-    ...(positiveInteger(item.context_length) || positiveInteger(item.max_input_tokens) || metaContextWindow(item.meta)
-      ? { contextWindow: positiveInteger(item.context_length) || positiveInteger(item.max_input_tokens) || metaContextWindow(item.meta) } : {}),
-    ...(positiveInteger(item.max_tokens) ? { maxOutput: positiveInteger(item.max_tokens) } : {}),
+    ...(positiveIntegerOrZero(item.context_length) || positiveIntegerOrZero(item.max_input_tokens) || metaContextWindow(item.meta)
+      ? { contextWindow: positiveIntegerOrZero(item.context_length) || positiveIntegerOrZero(item.max_input_tokens) || metaContextWindow(item.meta) } : {}),
+    ...(positiveIntegerOrZero(item.max_tokens) ? { maxOutput: positiveIntegerOrZero(item.max_tokens) } : {}),
     inputModes,
     outputModes,
     supportedEfforts,
@@ -582,8 +567,8 @@ function normalizeModel(value: unknown): AiModelSettings | null {
     id,
     label: text(model.label) || id,
     task: text(model.task),
-    ...(positiveInteger(model.contextWindow) ? { contextWindow: positiveInteger(model.contextWindow) } : {}),
-    ...(positiveInteger(model.maxOutput) ? { maxOutput: positiveInteger(model.maxOutput) } : {}),
+    ...(positiveIntegerOrZero(model.contextWindow) ? { contextWindow: positiveIntegerOrZero(model.contextWindow) } : {}),
+    ...(positiveIntegerOrZero(model.maxOutput) ? { maxOutput: positiveIntegerOrZero(model.maxOutput) } : {}),
     inputModes: modes(model.inputModes),
     outputModes: modes(model.outputModes),
     supportedEfforts,
@@ -595,14 +580,6 @@ function normalizeModel(value: unknown): AiModelSettings | null {
     ...(typeof model.supportsVision === "boolean" ? { supportsVision: model.supportsVision } : {}),
     ...(text(model.description) ? { description: text(model.description) } : {}),
   };
-}
-
-function isChatSelectable(model: AiModelSettings): boolean {
-  const task = model.task.trim().toLowerCase();
-  if (nonChatTasks.has(task)) return false;
-  if (model.outputModes.length > 0 && !model.outputModes.includes("text")) return false;
-  const id = model.id.toLowerCase();
-  return !nonChatMarkers.some((marker) => id.includes(marker));
 }
 
 function basicModel(id: string, label = id): AiModelSettings {
@@ -618,34 +595,6 @@ function basicModel(id: string, label = id): AiModelSettings {
   };
 }
 
-function normalizeTask(task: string, type: string): string {
-  const normalized = task.trim().toLowerCase();
-  if (normalized) return normalized;
-  const fallback = type.trim().toLowerCase();
-  return fallback === "model" ? "" : fallback;
-}
-
-function normalizeEfforts(value: unknown): ReasoningEffort[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map(normalizeEffort).filter((level) => level !== "auto"))];
-}
-
-function normalizeEffort(value: unknown): ReasoningEffort {
-  const aliases: Record<string, ReasoningEffort> = {
-    off: "none",
-    min: "minimal",
-    med: "medium",
-    "x-high": "xhigh",
-    extra: "xhigh",
-    maximum: "max",
-    // UI says "default"; catalogs sometimes use the same word.
-    default: "auto",
-  };
-  const raw = text(value).toLowerCase();
-  const normalized = (aliases[raw] ?? raw) as ReasoningEffort;
-  return efforts.includes(normalized) ? normalized : "auto";
-}
-
 function normalizeStrategy(value: unknown): AiRegistrySettings["strategy"] {
   return value === "round-robin" || value === "switch" ? value : "failover";
 }
@@ -654,41 +603,3 @@ function normalizeVision(value: unknown): AiRegistrySettings["vision"] {
   return value === "on" || value === "off" ? value : "auto";
 }
 
-function integerInRange(value: unknown, min: number, max: number, fallback: number): number {
-  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
-    ? value
-    : fallback;
-}
-
-function modes(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((item) => text(item).trim().toLowerCase()).filter(Boolean))];
-}
-
-function addUnique(values: string[], value: string): void {
-  if (!values.includes(value)) values.push(value);
-}
-
-function positiveInteger(value: unknown): number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
-}
-
-function basenameLabel(id: string): string {
-  if (!id.includes("/") && !id.includes("\\")) return id;
-  const parts = id.replace(/\\/g, "/").split("/").filter(Boolean);
-  return parts[parts.length - 1] || id;
-}
-
-function metaContextWindow(meta: unknown): number {
-  const record = typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta as Record<string, unknown> : {};
-  return positiveInteger(record.n_ctx) || positiveInteger(record.n_ctx_train) || positiveInteger(record.context_length) || 0;
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown> : {};
-}

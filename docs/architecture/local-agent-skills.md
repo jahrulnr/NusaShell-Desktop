@@ -39,9 +39,10 @@ agent turn:
 Pure "tools only + hope the model lists skills" underperforms: the model rarely
 calls `skill_list` spontaneously, so seeded domain skills stay invisible. To
 fix this, a budgeted **skills catalog** (name + description for every installed
-skill) is injected into the ephemeral runtime hydration transcript every
-interactive turn. It stays outside the cache-stable system prefix and is never
-persisted into conversation history.
+skill) is included in the hidden runtime hydration transcript. The latest
+complete transcript is replayed across provider turns and refreshed at runtime
+boundaries. It stays outside the cache-stable system prefix and visible
+conversation history.
 
 - **Source:** `SkillRegistryPort.list()` summaries — the same data that powers
   `skill_list`. Full `SKILL.md` bodies are never injected.

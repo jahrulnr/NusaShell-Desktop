@@ -1,7 +1,7 @@
 {
   "name": "@nusashell/example-files",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "build": "esbuild mcp/server.js --bundle --platform=node --format=cjs --target=node20 --outfile=mcp/server.cjs",

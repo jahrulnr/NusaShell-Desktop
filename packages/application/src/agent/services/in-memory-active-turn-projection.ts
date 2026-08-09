@@ -4,6 +4,7 @@ import type {
   ActiveTurnSnapshot,
   ActiveTurnStartInput,
   ActiveTurnStreaming,
+  ActiveTurnSteer,
 } from "../ports/active-turn-projection.port.js";
 import type { AgentToolCall } from "../ports/agent-provider.port.js";
 import type { AgentToolExecution, AgentTurnStep } from "./agent-turn-types.js";
@@ -28,6 +29,7 @@ export class InMemoryActiveTurnProjection implements ActiveTurnProjectionPort {
       status: "running",
       steps: [],
       openTools: [],
+      steers: [],
       updatedAt: nowIso(),
       ...(input.model ? { model: input.model } : {}),
       ...(input.providerId ? { providerId: input.providerId } : {}),
@@ -105,6 +107,16 @@ export class InMemoryActiveTurnProjection implements ActiveTurnProjectionPort {
     this.byConversation.set(conversationId, {
       ...current,
       openTools,
+      updatedAt: nowIso(),
+    });
+  }
+
+  setSteers(conversationId: string, steers: readonly ActiveTurnSteer[]): void {
+    const current = this.byConversation.get(conversationId);
+    if (!current) return;
+    this.byConversation.set(conversationId, {
+      ...current,
+      steers: [...steers],
       updatedAt: nowIso(),
     });
   }
