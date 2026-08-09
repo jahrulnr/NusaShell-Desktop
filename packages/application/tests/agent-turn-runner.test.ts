@@ -205,6 +205,7 @@ describe("AgentTurnRunner", () => {
     const runner = new AgentTurnRunner({
       provider,
       toolGateway: new FakeToolGateway(),
+      defaultMaxToolRounds: 2,
       context: {
         compactionEnabled: true,
         maxInputTokens: 1_000,
@@ -230,6 +231,44 @@ describe("AgentTurnRunner", () => {
     expect(provider.requests).toHaveLength(2);
     expect(provider.requests[0]?.tools).toEqual([]);
     expect(provider.requests[1]?.messages.some((message) => (
+      message.role === "user" && String(message.content).startsWith(SUMMARY_PREFIX)
+    ))).toBe(true);
+  });
+
+  it("compacts a runtime update consumed after a live tool batch", async () => {
+    const provider = new ScriptedProvider([
+      { toolCalls: [{ id: "call-1", name: "notes.create", args: { title: "before steer" } }] },
+      { text: "Checkpoint after the tool batch and late steer." },
+      { text: "done after steer" },
+    ]);
+    let checks = 0;
+    const runner = new AgentTurnRunner({
+      provider,
+      toolGateway: new FakeToolGateway(),
+      defaultMaxToolRounds: 2,
+      context: {
+        compactionEnabled: true,
+        maxInputTokens: 1_000,
+        reserveTokens: 100,
+        recentTurns: 1,
+        summaryMaxChars: 1_000,
+      },
+    });
+
+    const result = await runner.run({
+      traceId: "trace-boundary-compaction",
+      messages: [{ role: "user", content: "start" }],
+      pluginIds: [],
+      consumeRuntimeUpdate: async () => {
+        checks += 1;
+        return checks === 2 ? [{ role: "user", content: "late steer ".repeat(2_000) }] : [];
+      },
+    });
+
+    expect(result.text).toBe("done after steer");
+    expect(provider.requests).toHaveLength(3);
+    expect(provider.requests[1]?.tools).toEqual([]);
+    expect(provider.requests[2]?.messages.some((message) => (
       message.role === "user" && String(message.content).startsWith(SUMMARY_PREFIX)
     ))).toBe(true);
   });

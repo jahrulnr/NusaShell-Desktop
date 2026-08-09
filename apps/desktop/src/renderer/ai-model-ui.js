@@ -187,6 +187,17 @@ export function resolveContextBadgeTokens({ estimatedTokens, inputTokens, liveTo
 }
 
 /**
+ * Resolve an authoritative backend context snapshot.
+ *
+ * Unlike streamed deltas, a context event may represent a completed
+ * compaction. It must be allowed to lower the live badge instead of being
+ * merged monotonically with the pre-compaction estimate.
+ */
+export function resolveContextUpdateTokens({ estimatedTokens, inputTokens } = {}) {
+  return resolveContextBadgeTokens({ estimatedTokens, inputTokens, liveTokens: 0 });
+}
+
+/**
  * Decide whether a post-await ACP UI update should still apply.
  *
  * ACP session/config awaits can resolve after the user has already switched to

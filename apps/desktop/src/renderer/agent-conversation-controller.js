@@ -22,7 +22,7 @@ import {
   summarizeToolArgs,
   toConversationToolCall,
 } from "./agent-conversation-ui.js";
-import { estimateContextTokens, effectiveContextWindow, formatContextUsage, resolveContextBadgeTokens, shouldApplyAcpUiUpdate } from "./ai-model-ui.js";
+import { estimateContextTokens, effectiveContextWindow, formatContextUsage, resolveContextUpdateTokens, shouldApplyAcpUiUpdate } from "./ai-model-ui.js";
 import { inspectAttachmentContent, toDataUrl } from "./attachment-content.js";
 import { CANVAS_ARTIFACT_MAX_SOURCE_BYTES, canvasArtifactId, extractCanvasCandidates, resolveCanvasFence } from "./agent-canvas-detect.js";
 import { clampCanvasDrawerWidth } from "./agent-canvas-layout.js";
@@ -766,8 +766,8 @@ export class AgentConversationController {
         selectedModel?.contextWindow ?? 0,
         this.getMaxInputTokens?.(),
       );
-      const setContextStatus = (tokens) => {
-        liveTokens = Math.max(liveTokens, tokens);
+      const setContextStatus = (tokens, { reset = false } = {}) => {
+        liveTokens = reset ? tokens : Math.max(liveTokens, tokens);
         if (selectedModel) status.textContent = formatContextUsage(liveTokens, liveEffectiveWindow);
       };
       setContextStatus(baseTokens);
@@ -903,11 +903,10 @@ export class AgentConversationController {
           // billing tokens. Pass the full event payload; the helper ignores
           // inputTokens (cumulative billing) so multi-round tool turns do not
           // inflate the badge ~N× the real window (BH-CTX-01/04).
-          setContextStatus(resolveContextBadgeTokens({
+          setContextStatus(resolveContextUpdateTokens({
             estimatedTokens: Number(payload?.estimatedTokens) || 0,
             inputTokens: Number(payload?.inputTokens) || 0,
-            liveTokens,
-          }));
+          }), { reset: true });
         },
         onTurnEnd: (payload) => {
           this.sealStreamingToolCardsIncomplete(streamState);
@@ -1335,8 +1334,8 @@ export class AgentConversationController {
         }
         const baseTokens = estimateContextTokens(turnMessages);
         let liveTokens = baseTokens;
-        const setContextStatus = (tokens) => {
-          liveTokens = Math.max(liveTokens, tokens);
+        const setContextStatus = (tokens, { reset = false } = {}) => {
+          liveTokens = reset ? tokens : Math.max(liveTokens, tokens);
           if (selectedModel) status.textContent = `${formatContextUsage(liveTokens, chainEffectiveWindow)} · ${chainLabel}`;
         };
         setContextStatus(baseTokens);
@@ -1461,11 +1460,10 @@ export class AgentConversationController {
           },
           onContextUpdate: (payload) => {
             if (!canPaint()) return;
-            setContextStatus(resolveContextBadgeTokens({
+            setContextStatus(resolveContextUpdateTokens({
               estimatedTokens: Number(payload?.estimatedTokens) || 0,
               inputTokens: Number(payload?.inputTokens) || 0,
-              liveTokens,
-            }));
+            }), { reset: true });
           },
           onTurnEnd: () => {
             this.sealStreamingToolCardsIncomplete(streamState);

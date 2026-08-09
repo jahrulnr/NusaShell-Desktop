@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampModelEffort, estimateContextTokens, formatContextUsage, formatEffortLabel, formatModelPickerLabel, modelCompatibility, modelEffortOptions, modelVisionStatus, resolveContextBadgeTokens, resolveRoomEffort, resolveRoomModel, searchModels, shouldApplyAcpUiUpdate } from "../src/renderer/ai-model-ui.js";
+import { clampModelEffort, estimateContextTokens, formatContextUsage, formatEffortLabel, formatModelPickerLabel, modelCompatibility, modelEffortOptions, modelVisionStatus, resolveContextBadgeTokens, resolveContextUpdateTokens, resolveRoomEffort, resolveRoomModel, searchModels, shouldApplyAcpUiUpdate } from "../src/renderer/ai-model-ui.js";
 
 const visionModel = {
   id: "openai/gpt-5",
@@ -211,6 +211,12 @@ describe("resolveContextBadgeTokens", () => {
       inputTokens: 60_000,
       liveTokens: 20_000,
     })).toBe(20_000);
+  });
+});
+
+describe("resolveContextUpdateTokens", () => {
+  it("allows a compaction update to lower the live badge estimate", () => {
+    expect(resolveContextUpdateTokens({ estimatedTokens: 80_000, liveTokens: 227_000 })).toBe(80_000);
   });
 });
 

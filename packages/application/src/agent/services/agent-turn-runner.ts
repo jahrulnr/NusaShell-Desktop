@@ -111,6 +111,9 @@ export class AgentTurnRunner {
     // batch needs one fresh provider sample even when the original round
     // budget has just been exhausted. Ordinary tool-loop limits stay firm.
     let runtimeUpdateRoundExtensions = 0;
+    // A steer consumed after a live tool batch is appended immediately, so
+    // carry the compaction requirement into the following loop iteration.
+    let runtimeUpdateNeedsCompaction = false;
     // Live-streamed text/reasoning buffers. Reset when a provider.complete
     // attempt succeeds (full response accepted). On mid-stream failure, these
     // carry already-painted paragraphs into buildTurnPartial so the UI/seal
@@ -146,7 +149,8 @@ export class AgentTurnRunner {
         activeRound = round;
         assertTurnActive(input.signal, traceId);
         const runtimeUpdate = await input.consumeRuntimeUpdate?.();
-        const hasRuntimeUpdate = appendRuntimeUpdate(runtimeUpdate);
+        const hasRuntimeUpdate = appendRuntimeUpdate(runtimeUpdate) || runtimeUpdateNeedsCompaction;
+        runtimeUpdateNeedsCompaction = false;
         const tools = await this.deps.toolGateway.listTools(input.pluginIds, traceId);
         assertTurnActive(input.signal, traceId);
         const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -333,6 +337,7 @@ export class AgentTurnRunner {
               },
             );
             appendRuntimeUpdate(terminalBoundaryUpdate);
+            runtimeUpdateNeedsCompaction = true;
             if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
             continue;
           }
@@ -373,6 +378,7 @@ export class AgentTurnRunner {
             });
           }
           appendRuntimeUpdate(providerBoundaryUpdate);
+          runtimeUpdateNeedsCompaction = true;
           if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
           this.deps.logger?.info(
             "Agent runtime inbox applied after provider sample traceId=%s round=%d discardedToolCalls=%d",
@@ -470,6 +476,7 @@ export class AgentTurnRunner {
         const toolBoundaryUpdate = await input.consumeRuntimeUpdate?.();
         if (toolBoundaryUpdate?.length) {
           appendRuntimeUpdate(toolBoundaryUpdate);
+          runtimeUpdateNeedsCompaction = true;
           if (!roundsUnlimited) runtimeUpdateRoundExtensions += 1;
           this.deps.logger?.info(
             "Agent runtime inbox applied after live tools traceId=%s round=%d tools=%d",
