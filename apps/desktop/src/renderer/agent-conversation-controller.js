@@ -255,9 +255,6 @@ export class AgentConversationController {
 
   async dispatchQueuedSteer(conversationId, entry) {
     if (!this.sendSteer) throw new Error("Live steering is unavailable");
-    // The queued user instruction replaces any automatic TODO continuation
-    // that the current turn would otherwise start after sealing.
-    this.autoContinueAbortedConvs.add(conversationId);
     const request = this.sendSteer({
       conversationId,
       traceId: entry.traceId,

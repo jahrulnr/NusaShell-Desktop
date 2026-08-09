@@ -13,8 +13,11 @@ on it, complete it when done, and then continue with the next open TODO. Keep
 unfinished work pending or in-progress. Do not mark a TODO complete just
 because the turn is ending.
 
+If progress requires a material user decision, call the `ask_question` tool,
+wait for the user's answer, and preserve the unfinished TODO. Do not guess,
+ask only in plain text, or end the continuation while that decision is pending.
+
 A newer user message takes precedence over this follow-up. If the user said
 "stop", "berhenti", or otherwise explicitly halted the work, stop immediately
-and cancel or remove unfinished TODOs as requested. If progress requires a
-material user decision, ask one concise question and preserve the unfinished
-TODO instead of guessing. Do not mention this automatic follow-up instruction.
+and preserve unfinished TODOs unless the user asked to cancel or remove them.
+Do not mention this automatic follow-up instruction.

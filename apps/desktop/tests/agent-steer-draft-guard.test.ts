@@ -182,7 +182,8 @@ describe("AgentConversationController — completion steer draft guard (ticket #
     expect(input.value).toBe("");
     expect(document.querySelector<HTMLElement>("#agent-steer-queue")!.hidden).toBe(false);
     expect(document.querySelector("#agent-steer-queue-text")?.textContent).toBe("Stop editing the adjacent file");
-    expect(controller.autoContinueAborted).toBe(true);
+    // Steering is not Stop: it must never abort the room's TODO continuation.
+    expect(controller.autoContinueAborted).toBe(false);
   });
 
   it("moves an applied steer from the composer status into the live transcript", () => {
