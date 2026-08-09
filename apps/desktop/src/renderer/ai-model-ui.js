@@ -198,6 +198,15 @@ export function resolveContextUpdateTokens({ estimatedTokens, inputTokens } = {}
 }
 
 /**
+ * Whether the renderer should recover a missing outer auto-continue decision
+ * from the room-local TODO state.
+ */
+export function shouldApplyTodoContinuationFallback(decision, items = []) {
+  if (decision !== undefined) return false;
+  return items.some((item) => item?.status !== "completed");
+}
+
+/**
  * Decide whether a post-await ACP UI update should still apply.
  *
  * ACP session/config awaits can resolve after the user has already switched to

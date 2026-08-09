@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampModelEffort, estimateContextTokens, formatContextUsage, formatEffortLabel, formatModelPickerLabel, modelCompatibility, modelEffortOptions, modelVisionStatus, resolveContextBadgeTokens, resolveContextUpdateTokens, resolveRoomEffort, resolveRoomModel, searchModels, shouldApplyAcpUiUpdate } from "../src/renderer/ai-model-ui.js";
+import { clampModelEffort, estimateContextTokens, formatContextUsage, formatEffortLabel, formatModelPickerLabel, modelCompatibility, modelEffortOptions, modelVisionStatus, resolveContextBadgeTokens, resolveContextUpdateTokens, resolveRoomEffort, resolveRoomModel, searchModels, shouldApplyTodoContinuationFallback, shouldApplyAcpUiUpdate } from "../src/renderer/ai-model-ui.js";
 
 const visionModel = {
   id: "openai/gpt-5",
@@ -217,6 +217,14 @@ describe("resolveContextBadgeTokens", () => {
 describe("resolveContextUpdateTokens", () => {
   it("allows a compaction update to lower the live badge estimate", () => {
     expect(resolveContextUpdateTokens({ estimatedTokens: 80_000, liveTokens: 227_000 })).toBe(80_000);
+  });
+});
+
+describe("shouldApplyTodoContinuationFallback", () => {
+  it("starts a fallback only when the decision is missing and todos remain open", () => {
+    expect(shouldApplyTodoContinuationFallback(undefined, [{ id: "1", content: "open", status: "pending" }])).toBe(true);
+    expect(shouldApplyTodoContinuationFallback({ shouldContinue: false }, [{ id: "1", content: "open", status: "pending" }])).toBe(false);
+    expect(shouldApplyTodoContinuationFallback(undefined, [{ id: "1", content: "done", status: "completed" }])).toBe(false);
   });
 });
 

@@ -22,7 +22,7 @@ import {
   summarizeToolArgs,
   toConversationToolCall,
 } from "./agent-conversation-ui.js";
-import { estimateContextTokens, effectiveContextWindow, formatContextUsage, resolveContextUpdateTokens, shouldApplyAcpUiUpdate } from "./ai-model-ui.js";
+import { estimateContextTokens, effectiveContextWindow, formatContextUsage, resolveContextUpdateTokens, shouldApplyAcpUiUpdate, shouldApplyTodoContinuationFallback } from "./ai-model-ui.js";
 import { inspectAttachmentContent, toDataUrl } from "./attachment-content.js";
 import { CANVAS_ARTIFACT_MAX_SOURCE_BYTES, canvasArtifactId, extractCanvasCandidates, resolveCanvasFence } from "./agent-canvas-detect.js";
 import { clampCanvasDrawerWidth } from "./agent-canvas-layout.js";
@@ -1018,6 +1018,25 @@ export class AgentConversationController {
       // fill, and would inflate the badge ~N× after multi-round turns.
       this.log("info", `Agent turn completed trace=${result.traceId} rounds=${result.rounds}`);
       sealedResult = result;
+      // Older/partially restarted backends may complete a successful turn
+      // without returning the outer auto-continue decision. The room-local
+      // TODO strip is still authoritative in the renderer, so do not strand
+      // an open checklist merely because that optional response metadata was
+      // lost in transit. An explicit false decision remains authoritative.
+      if (this.todoStrip?.conversationId === ownerConversationId
+        && shouldApplyTodoContinuationFallback(result.autoContinue, this.todoStrip.items)) {
+        sealedResult = {
+          ...result,
+          autoContinue: {
+            shouldContinue: true,
+            openTodoCount: this.todoStrip.items.filter((item) => item.status !== "completed").length,
+            continuesUsed: 0,
+            maxAutoContinues: 10,
+            reason: "continue",
+          },
+        };
+        this.log("warn", `Auto-continue decision missing; falling back to room TODOs conversation=${ownerConversationId}`);
+      }
     } catch (error) {
       if (error.code === "AGENT_TURN_CANCELLED" && !turnEnded) {
         // Wait for the terminal turn_end event (published after in-flight
