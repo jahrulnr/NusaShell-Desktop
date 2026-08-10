@@ -31,7 +31,7 @@ describe("notesDataFile", () => {
     setEnv("NUSASHELL_USER_DATA", "/home/user/.config/nusashell");
     setEnv("NUSASHELL_DATA_DIR", undefined);
     expect(notesDataFile()).toBe(
-      path.join("/home/user/.config/nusashell", "plugins-data", "nusashell.notes", "notes.json"),
+      path.resolve("/home/user/.config/nusashell", "plugins-data", "nusashell.notes", "notes.json"),
     );
   });
 

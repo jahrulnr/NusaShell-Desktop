@@ -18,6 +18,7 @@ const config: ForgeConfig = {
     name: "NusaShell",
     appVersion: releaseVersion,
     buildVersion: releaseVersion,
+    icon: resolve(__dirname, "assets", process.platform === "win32" ? "nusashell.ico" : "nusashell.png"),
     asar: {
       unpack: "**/*.node",
     },
@@ -26,6 +27,12 @@ const config: ForgeConfig = {
       resolve(__dirname, "..", "..", "resources", "agent"),
       resolve(__dirname, "assets", "nusashell.png"),
     ],
+  },
+  rebuildConfig: {
+    // better-sqlite3 ships an ABI-stable N-API binary. Rebuilding it here
+    // needlessly requires a platform C++ toolchain; node-pty is rebuilt by
+    // stage-terminal-native before make/package.
+    onlyModules: ["node-pty"],
   },
   hooks: {
     prePackage: async () => {

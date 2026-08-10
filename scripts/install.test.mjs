@@ -32,6 +32,8 @@ describe("installer user-data isolation", () => {
     // Windows install targets LOCALAPPDATA\Programs\NusaShell, not Electron
     // userData (%APPDATA%\nusashell — lowercase product path).
     expect(windowsInstaller).toMatch(/LOCALAPPDATA.*Programs.*NusaShell/s);
+    expect(windowsInstaller).toMatch(/GetFolderPath\('Desktop'\)/);
+    expect(windowsInstaller).toMatch(/IconLocation/);
     expect(windowsInstaller).not.toMatch(/\$env:APPDATA\s*['"]?\\?nusashell/i);
     expect(windowsInstaller).not.toMatch(/\\AppData\\Roaming\\nusashell/i);
   });

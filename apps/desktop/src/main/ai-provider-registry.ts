@@ -602,4 +602,3 @@ function normalizeStrategy(value: unknown): AiRegistrySettings["strategy"] {
 function normalizeVision(value: unknown): AiRegistrySettings["vision"] {
   return value === "on" || value === "off" ? value : "auto";
 }
-

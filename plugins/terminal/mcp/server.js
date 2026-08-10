@@ -55,7 +55,7 @@ function ensureBootstrapFiles() {
 }
 
 function shellSpawnArgs(shell) {
-  const base = path.basename(shell || "");
+  const base = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
   // Do not pass -i together with --rcfile: bash then errors with
   // "/bin/bash: --: invalid option" under node-pty.
   if (base === "bash") {
@@ -69,7 +69,7 @@ function shellSpawnArgs(shell) {
 
 function shellSpawnEnv(shell, baseEnv) {
   const env = { ...baseEnv };
-  const base = path.basename(shell || "");
+  const base = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
   if (base === "zsh" || String(shell).endsWith("/zsh")) {
     env.ZDOTDIR = BOOTSTRAP_DIR;
   }
@@ -99,7 +99,15 @@ function resolveCwd(input) {
 }
 
 function defaultShell() {
-  return process.env.SHELL || (process.platform === "win32" ? "cmd.exe" : "/bin/bash");
+  const configured = process.env.SHELL;
+  if (process.platform === "win32" && configured) {
+    const base = path.posix.basename(configured).replace(/\.exe$/i, "").toLowerCase();
+    // Git Bash exports a POSIX path (/usr/bin/bash), which Node's Windows
+    // child_process cannot spawn directly. Let Windows resolve bash.exe from
+    // PATH so both Git Bash and native shells use a valid executable name.
+    if (base === "bash" || base === "zsh") return `${base}.exe`;
+  }
+  return configured || (process.platform === "win32" ? "cmd.exe" : "/bin/bash");
 }
 
 function trimBuffer(text) {
@@ -188,7 +196,12 @@ function runExec({ command, cwd, timeoutMs }, extra) {
     }
     const resolvedCwd = resolveCwd(cwd);
     const shell = defaultShell();
-    const args = process.platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
+    const shellBase = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
+    const args = shellBase === "bash" || shellBase === "zsh"
+      ? ["-lc", command]
+      : process.platform === "win32"
+        ? ["/d", "/s", "/c", command]
+        : ["-lc", command];
     const child = spawn(shell, args, { cwd: resolvedCwd, env: { ...process.env, HOME } });
 
     let stdout = "";

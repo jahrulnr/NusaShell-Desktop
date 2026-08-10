@@ -38,7 +38,10 @@ export function inferProviderType(value: {
   readonly baseUrl?: string;
 }): AiProviderType {
   const explicit = normalizedType(value.type);
-  if (explicit) return explicit;
+  // The editor uses the generic type for built-in OpenAI-compatible presets.
+  // Keep inferring those presets from their stable id/URL so their defaults
+  // (notably OmniRoute's local base URL) are not discarded on save.
+  if (explicit && explicit !== "openai-compatible") return explicit;
   const id = value.id?.trim().toLowerCase() ?? "";
   const baseUrl = value.baseUrl?.trim().toLowerCase() ?? "";
   return aiProviderDefinitions.find((item) =>

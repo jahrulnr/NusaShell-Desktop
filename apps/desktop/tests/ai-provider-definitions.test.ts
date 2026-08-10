@@ -55,4 +55,20 @@ describe("AI provider definitions", () => {
     });
     expect(providerDefinition("openai-compatible").hideFromCatalog).toBe(true);
   });
+  it("keeps built-in defaults when the editor submits the generic compatible type", () => {
+    expect(normalizeProviderInput({
+      id: "omniroute",
+      name: "OmniRoute",
+      type: "openai-compatible",
+      api: "responses",
+      baseUrl: "",
+      apiKeyOptional: true,
+      enabled: true,
+    })).toMatchObject({
+      type: "omniroute",
+      api: "responses",
+      baseUrl: "http://127.0.0.1:20128/v1",
+      apiKeyOptional: true,
+    });
+  });
 });

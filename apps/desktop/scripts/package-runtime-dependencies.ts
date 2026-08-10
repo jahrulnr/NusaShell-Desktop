@@ -35,11 +35,13 @@ export interface StageRuntimeDependenciesOptions {
 
 async function deployProductionDependencies(deployPath: string): Promise<void> {
   const args = [
+    "--config.block-exotic-subdeps=false",
     "--config.inject-workspace-packages=true",
     "--filter",
     "@nusashell/desktop",
     "deploy",
     "--prod",
+    "--ignore-scripts",
     deployPath,
   ];
   const npmExecPath = process.env.npm_execpath;

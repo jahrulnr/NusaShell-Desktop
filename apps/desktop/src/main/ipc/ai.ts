@@ -4,6 +4,22 @@ import type { AiRegistrySettings, SaveAiProviderInput } from "../ai-settings.js"
 import { resolveActiveModelDefault } from "../ai-provider-registry.js";
 import type { ConfigureAiCommand, ConfigureAiRuntimeCommand, RemoveAiCommand } from "@nusashell/application";
 
+export function buildConfigureAiCommand(
+  provider: Pick<AiRegistrySettings["providers"][number], "id" | "api" | "baseUrl" | "apiKey" | "timeoutMs" | "maxAttempts">,
+  model: string,
+): ConfigureAiCommand {
+  return {
+    kind: "configure-ai",
+    providerId: provider.id,
+    api: provider.api,
+    model,
+    baseUrl: provider.baseUrl,
+    ...(provider.apiKey ? { apiKey: provider.apiKey } : {}),
+    timeoutMs: provider.timeoutMs,
+    maxAttempts: provider.maxAttempts,
+  };
+}
+
 function normalizeProviderId(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -58,7 +74,7 @@ export function registerAiIpc(ctx: IpcContext): void {
     if (active) {
       const provider = aiSettings.providers.find((item) => item.id === active.providerId);
       if (provider) {
-        const cmd: ConfigureAiCommand = { kind: "configure-ai", providerId: active.providerId, model: active.model };
+        const cmd = buildConfigureAiCommand(provider, active.model);
         ctx.commandBus.execute(cmd);
       }
     }

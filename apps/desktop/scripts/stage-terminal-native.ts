@@ -44,7 +44,13 @@ async function main(): Promise<void> {
     console.log(`[stage-terminal-native] copied node-pty to ${targetDir}`);
   }
 
-  // Rebuild node-pty for the Electron ABI
+  // Rebuild node-pty for the Electron ABI. Local Windows installs may not
+  // have a C++ toolchain; node-pty ships a platform prebuild that can be
+  // staged for that path, while CI/release packaging keeps the rebuild gate.
+  if (process.env.NUSASHELL_SKIP_NATIVE_REBUILD === "1") {
+    console.log("[stage-terminal-native] skipping native rebuild (local install prebuild mode)");
+    return;
+  }
   console.log("[stage-terminal-native] running electron-rebuild for node-pty...");
   try {
     await execFileAsync(

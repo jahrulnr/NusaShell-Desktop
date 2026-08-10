@@ -1,7 +1,7 @@
 {
   "name": "@nusashell/desktop",
   "private": true,
-  "version": "0.7.2",
+  "version": "0.7.3",
   "author": "Jahrulnr",
   "type": "module",
   "main": ".vite/build/main.cjs",
@@ -10,16 +10,16 @@
   },
   "scripts": {
     "start": "electron-forge start",
-    "dev": "tsx scripts/register-linux-desktop.ts && electron-forge start -- --dev --no-sandbox",
+    "dev": "node ../../node_modules/electron/install.js && tsx scripts/register-linux-desktop.ts && electron-forge start -- --dev --no-sandbox",
     "stage:terminal-native": "tsx scripts/stage-terminal-native.ts",
-    "package": "tsx scripts/clean-package-output.ts && electron-forge package",
+    "package": "tsx scripts/stage-terminal-native.ts && tsx scripts/clean-package-output.ts && electron-forge package",
     "make": "tsx scripts/stage-terminal-native.ts && tsx scripts/clean-package-output.ts && electron-forge make",
     "verify:package-runtime": "tsx scripts/verify-packaged-runtime.ts",
     "clean:package-output": "tsx scripts/clean-package-output.ts",
     "publish": "electron-forge publish",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "postinstall": "electron-rebuild -w better-sqlite3"
+    "postinstall": "node -e \"console.log('NusaShell desktop dependencies installed; native modules are staged during packaging.')\""
   },
   "dependencies": {
     "@nusashell/application": "workspace:*",

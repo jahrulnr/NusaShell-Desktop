@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-08-10
+
+### Fixed
+
+- Removed the local desktop postinstall rebuild of `better-sqlite3`; native dependencies are staged during packaging, so Windows source development no longer requires Visual Studio C++ build tools just to run `make dev`.
+- Release metadata now includes Windows and macOS payloads so the platform installers can resolve their archives.
+- Provider model selection now preserves the active provider's base URL and connection settings when reconfiguring the runtime.
+- Built-in OpenAI-compatible provider IDs continue to infer their presets when the editor submits the generic provider type, preserving OmniRoute's default endpoint.
+- OpenAI-compatible Responses API requests can fall back to Chat Completions only when the upstream endpoint reports that Responses is unsupported.
+
 ## [0.7.2] - 2026-08-10
 
 ### Added

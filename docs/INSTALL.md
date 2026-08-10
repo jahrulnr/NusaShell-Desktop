@@ -18,6 +18,19 @@ irm https://raw.githubusercontent.com/jahrulnr/NusaShell/master/scripts/install.
 
 The installer downloads the release manifest and payload, verifies SHA-256 before extracting, and never writes outside your user profile. Set `NUSASHELL_VERSION=0.1.0` to pin a release. Releases are published automatically from `master` when `VERSION` is new.
 
+## Requirements
+
+Release installation does not require Node.js, pnpm, Git Bash, Python, Visual
+Studio, or C++ build tools. It only requires an internet connection and a
+supported 64-bit desktop OS. Windows uses PowerShell 5.1+ and installs under
+`%LOCALAPPDATA%\Programs\NusaShell`; Linux uses `curl` or `wget` plus `tar`;
+macOS uses `curl` or `wget` plus `unzip`.
+
+Building from source requires Node.js 24, pnpm 11.17.0, and GNU Make 4.4+ for
+the `make` shortcuts. On Windows, Git Bash provides the shell used by the
+Makefile. Ordinary `make dev` does not rebuild `better-sqlite3`; packaging may
+still require the platform's native C/C++ toolchain for terminal dependencies.
+
 On Linux, releases live in `~/.local/share/nusashell/versions/`; `current` points to the active version and `~/.local/bin/nusashell` launches it. A desktop-menu entry is written under `~/.local/share/applications`. Updates download a new version, verify it, and switch `current`; the installer keeps only the newly installed version and exactly one previous version. For example, `0.1.6` → `0.1.7` keeps both, then `0.1.7` → `0.1.9` removes `0.1.6` and keeps `{0.1.7, 0.1.9}`. AppImage builds continue to use Electron's updater; system packages should be updated through the system package manager.
 
 The installer probes Chromium's unprivileged user-namespace sandbox directly;

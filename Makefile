@@ -1,6 +1,8 @@
 dev:
 	@echo "==> Clearing Vite + build caches to avoid stale-module false positives"
 	rm -rf apps/desktop/.vite apps/desktop/node_modules/.vite node_modules/.vite node_modules/.cache
+	@echo "==> Ensuring the Electron binary is installed"
+	node node_modules/electron/install.js
 	@echo "==> Building plugin-sdk (renderer imports from source via Vite)"
 	pnpm --filter @nusashell/plugin-sdk run build
 	pnpm --filter @nusashell/example-mail run build
@@ -24,9 +26,15 @@ test:
 # Package pre-cleans apps/desktop/out via rename-away so a running NusaShell
 # (or fuseblk .fuse_hidden* tombstones) cannot break electron-forge with ENOTEMPTY.
 install:
-	pnpm --filter @nusashell/desktop run package
+	@case "$$(uname -s)" in \
+		MINGW*|MSYS*|CYGWIN*) NUSASHELL_SKIP_NATIVE_REBUILD=1 pnpm --filter @nusashell/desktop run package;; \
+		*) pnpm --filter @nusashell/desktop run package;; \
+	esac
 	pnpm --filter @nusashell/desktop run verify:package-runtime
-	bash scripts/install-local.sh
+	@case "$$(uname -s)" in \
+		MINGW*|MSYS*|CYGWIN*) powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-local.ps1;; \
+		*) bash scripts/install-local.sh;; \
+	esac
 
 # Lightweight gates that prove install/package safety contracts without a full
 # electron-forge package (which is slow and requires a free out/ tree).

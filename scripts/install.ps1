@@ -23,6 +23,18 @@ try {
   if (-not (Test-Path $target)) { Expand-Archive $archive -DestinationPath $target; $child = Get-ChildItem $target | Select-Object -First 1; if ($child -and $child.PSIsContainer) { Get-ChildItem $child.FullName | Move-Item -Destination $target; Remove-Item $child.FullName } }
   if (Test-Path $current) { Remove-Item $current -Force }; New-Item -ItemType Junction -Path $current -Target $target | Out-Null
   Get-ChildItem $versions -Directory | Where-Object { $_.Name -ne $manifest.version -and $_.Name -ne $previousVersion } | Remove-Item -Recurse -Force
-  $shell = New-Object -ComObject WScript.Shell; $shortcut = $shell.CreateShortcut((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell.lnk')); $shortcut.TargetPath = Join-Path $current 'NusaShell.exe'; $shortcut.Save()
+  $shell = New-Object -ComObject WScript.Shell
+  $iconPath = Join-Path $current 'resources\nusashell.png'
+  $shortcutPaths = @(
+    (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell.lnk'),
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NusaShell.lnk')
+  )
+  foreach ($shortcutPath in $shortcutPaths) {
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = Join-Path $current 'NusaShell.exe'
+    $shortcut.WorkingDirectory = $current
+    $shortcut.IconLocation = "$(Join-Path $current 'NusaShell.exe'),0"
+    $shortcut.Save()
+  }
   Write-Host "Installed NusaShell $($manifest.version)."
 } finally { Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue }

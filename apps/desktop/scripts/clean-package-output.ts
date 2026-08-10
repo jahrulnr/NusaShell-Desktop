@@ -12,7 +12,7 @@
  */
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { platform, arch as nodeArch } from "node:os";
+import { platform, arch as nodeArch, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
@@ -83,11 +83,23 @@ export async function clearPackageOutput(options?: {
   return destination;
 }
 
+/** Remove abandoned Electron Packager temp trees from a previous failed run. */
+export async function clearForgeTemp(): Promise<void> {
+  const forgeTempRoot = join(tmpdir(), "electron-packager");
+  const entries = await readdir(forgeTempRoot, { withFileTypes: true }).catch(() => []);
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("tmp-"))
+      .map((entry) => rm(join(forgeTempRoot, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => undefined)),
+  );
+}
+
 const isMain =
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) {
+  await clearForgeTemp();
   const moved = await clearPackageOutput();
   if (moved) {
     console.log(`Cleared previous package output → ${moved}`);

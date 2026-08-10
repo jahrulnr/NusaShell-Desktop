@@ -187,15 +187,7 @@ jobs:
             echo "Release ${tag} already exists — skipping (bump VERSION to publish a new release)."
             exit 0
           fi
-          payload="$(find release-artifacts -type f -name "nusashell-${version}-linux-x64.tar.gz" -print -quit)"
-          if [[ -z "${payload}" ]]; then
-            echo "Missing Linux directory-install payload" >&2
-            exit 1
-          fi
-          payload_name="$(basename "${payload}")"
-          payload_sha="$(sha256sum "${payload}" | awk '{print $1}')"
-          printf '{"version":"%s","files":{"linux-x64":{"name":"%s","sha256":"%s"}}}\n' \
-            "${version}" "${payload_name}" "${payload_sha}" > release-artifacts/latest.json
+          node scripts/build-release-manifest.mjs "${version}" release-artifacts release-artifacts/latest.json
           node scripts/release-notes.mjs "${version}" CHANGELOG.md > release-notes.md
           mapfile -d '' artifacts < <(find release-artifacts -type f -print0)
           gh release create "${tag}" "${artifacts[@]}" \
