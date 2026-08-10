@@ -77,8 +77,14 @@ function createMcpClient() {
 
   async function callTool(name, args = {}) {
     const result = await request("tools/call", { name, arguments: args });
+    if (result?.isError) {
+      const text = result?.content?.find((part) => part?.type === "text")?.text;
+      throw new Error(text || "tool error");
+    }
+    if (result?.structuredContent !== undefined) {
+      return { ...result.structuredContent, __text: result?.content?.find((part) => part?.type === "text")?.text };
+    }
     const text = result?.content?.find((part) => part?.type === "text")?.text;
-    if (result?.isError) throw new Error(text || "tool error");
     if (!text) return result;
     try {
       return JSON.parse(text);
@@ -114,6 +120,7 @@ describe("terminal MCP e2e", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "exec",
+        "shells",
         "open",
         "write",
         "read",
@@ -122,6 +129,14 @@ describe("terminal MCP e2e", () => {
         "list",
       ]),
     );
+  });
+
+  it("lists available shells with an auto default", async () => {
+    const result = await client.callTool("shells", {});
+    expect(result.defaultKind).toBeTruthy();
+    expect(Array.isArray(result.shells)).toBe(true);
+    expect(result.shells.length).toBeGreaterThan(0);
+    expect(result.__text).toContain("default=");
   });
 
   it("exec defaults cwd to the user home directory", async () => {
@@ -137,6 +152,19 @@ describe("terminal MCP e2e", () => {
       expect(String(result.stdout).trim()).toBe(HOME);
     }
     expect(result.exitCode).toBe(0);
+    expect(result.__text).toContain("=== stdout ===");
+    expect(result.shellKind).toBeTruthy();
+  });
+
+  it("exec accepts an explicit bash shell kind on unix", async () => {
+    if (process.platform === "win32") return;
+    const result = await client.callTool("exec", {
+      command: "printf hi",
+      shell: "bash",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("hi");
+    expect(result.shellKind).toBe("bash");
   });
 
   it("opens a PTY session with colored prompt / ls ANSI escapes", async () => {

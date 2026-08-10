@@ -240,6 +240,9 @@ function mcpErrorMessage(content: readonly McpContentPart[]): string {
 
 /**
  * Convert an ingested MCP result into a canonical AgentToolResult.
+ *
+ * When MCP returns both an agent-readable text body and structuredContent,
+ * keep both: text drives model projection; structuredContent stays for UI/host.
  */
 export function fromIngestedMcp(
   callId: string,
@@ -250,21 +253,39 @@ export function fromIngestedMcp(
   if (ingested.kind === "error") {
     return errorToolResult(callId, toolName, "TOOL_FAILED", ingested.message, false, extra);
   }
-  // Prefer structuredContent; fall back to sole text part.
-  if (ingested.structuredContent !== undefined) {
-    return successToolResult(callId, toolName, ingested.structuredContent, extra);
-  }
+
   const textParts = ingested.content
     .filter((p) => p.type === "text" && typeof p.text === "string")
     .map((p) => p.text!);
-  if (textParts.length === 1) {
-    return successToolResult(callId, toolName, textParts[0], extra);
+  const textBody = textParts.length > 0 ? textParts.join("\n") : undefined;
+  const structured = asStructuredRecord(ingested.structuredContent);
+
+  if (textBody !== undefined && structured) {
+    return {
+      callId,
+      toolName,
+      status: "success",
+      content: [{ type: "text", text: textBody }],
+      structuredContent: structured,
+      metadata: { ...defaultMeta(toolName), ...extra },
+    };
   }
-  if (textParts.length > 1) {
-    return successToolResult(callId, toolName, textParts.join("\n"), extra);
+  if (structured) {
+    return successToolResult(callId, toolName, structured, extra);
   }
-  // Empty content — return empty success.
+  if (textBody !== undefined) {
+    return successToolResult(callId, toolName, textBody, extra);
+  }
   return successToolResult(callId, toolName, "", extra);
+}
+
+function asStructuredRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  // Non-object structured payloads still go through successToolResult's object path.
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,13 +325,12 @@ function projectWithinOutputCap(toolName: string, status: AgentToolStatus, body:
 function projectBody(result: AgentToolResult): string {
   if (result.status === "success") {
     const textPart = result.content.find((c) => c.type === "text");
-    if (textPart && textPart.type === "text" && !result.structuredContent) {
-      // Text/command path: the MCP text part is already the actual terminal
-      // result. Preserve it verbatim; the untrusted envelope is the only
-      // model-facing framing it needs.
+    // Prefer MCP/plugin-authored agent text even when structuredContent exists.
+    // Structured payloads remain available for UI; models need verbatim stream
+    // bodies (stdout, file content) without JSON escaping.
+    if (textPart && textPart.type === "text") {
       return textPart.text;
     }
-    // Structured path: compact terminal-like key/value and table output.
     const data = unwrapGatewaySuccessPayload(
       result.structuredContent ?? result.content.find((c) => c.type === "json")?.data,
     );

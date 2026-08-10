@@ -18,6 +18,7 @@ import { ContextEngine } from "./context-engine.js";
 import { callFilesTool, FILES_TOOLS } from "./tools.js";
 import { getFilesPrompt, FILES_PROMPTS } from "./prompts.js";
 import { RetrievalEngine } from "./search-relevant.js";
+import { formatFilesToolText, mcpToolResult } from "./agent-output.js";
 
 async function main() {
   const root = await loadRootFromEnvironment();
@@ -97,10 +98,7 @@ async function main() {
       );
       // Emit automation notifications for mutating operations (Watch→Agent demo).
       emitAutomationForTool(server, request.params.name, request.params.arguments ?? {});
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return mcpToolResult(formatFilesToolText(request.params.name, result), result);
     } catch (error) {
       const safeError = safeFilesError(error);
       process.stderr.write(

@@ -8,6 +8,22 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getTerminalPrompt, TERMINAL_PROMPTS } from "./prompts.js";
 import {
+  resolveShell,
+  listAvailableShells,
+  execArgsForShell,
+  detectShellKind,
+  SHELL_KINDS,
+} from "./shell-resolve.js";
+import {
+  formatExecText,
+  formatPtyReadText,
+  formatShellsText,
+  formatOkText,
+  formatSessionOpenText,
+  mcpToolResult,
+  stripAnsi,
+} from "./agent-output.js";
+import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
@@ -54,23 +70,24 @@ function ensureBootstrapFiles() {
   );
 }
 
+function exeBase(shell) {
+  return path.posix.basename(String(shell || "").replace(/\\/g, "/")).replace(/\.exe$/i, "").toLowerCase();
+}
+
 function shellSpawnArgs(shell) {
-  const base = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
+  const base = exeBase(shell);
   // Do not pass -i together with --rcfile: bash then errors with
   // "/bin/bash: --: invalid option" under node-pty.
   if (base === "bash") {
     return ["--rcfile", BASH_RC];
-  }
-  if (base === "zsh" || String(shell).endsWith("/zsh")) {
-    return [];
   }
   return [];
 }
 
 function shellSpawnEnv(shell, baseEnv) {
   const env = { ...baseEnv };
-  const base = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
-  if (base === "zsh" || String(shell).endsWith("/zsh")) {
+  const base = exeBase(shell);
+  if (base === "zsh") {
     env.ZDOTDIR = BOOTSTRAP_DIR;
   }
   return env;
@@ -98,21 +115,21 @@ function resolveCwd(input) {
   return cwd;
 }
 
-function defaultShell() {
-  const configured = process.env.SHELL;
-  if (process.platform === "win32" && configured) {
-    const base = path.posix.basename(configured).replace(/\.exe$/i, "").toLowerCase();
-    // Git Bash exports a POSIX path (/usr/bin/bash), which Node's Windows
-    // child_process cannot spawn directly. Let Windows resolve bash.exe from
-    // PATH so both Git Bash and native shells use a valid executable name.
-    if (base === "bash" || base === "zsh") return `${base}.exe`;
+function requireShell(shellInput) {
+  const resolved = resolveShell(shellInput);
+  if (!resolved.available) {
+    throw new Error(
+      `Shell "${shellInput || "auto"}" is not available on this host. Call the shells tool to list installed kinds (${SHELL_KINDS.filter((k) => k !== "auto").join(", ")}).`,
+    );
   }
-  return configured || (process.platform === "win32" ? "cmd.exe" : "/bin/bash");
+  return resolved;
 }
 
 function trimBuffer(text) {
-  if (text.length > MAX_BUFFER_CHARS) return text.slice(text.length - MAX_BUFFER_CHARS);
-  return text;
+  if (text.length > MAX_BUFFER_CHARS) {
+    return { text: text.slice(text.length - MAX_BUFFER_CHARS), truncated: true };
+  }
+  return { text, truncated: false };
 }
 
 const server = new Server(
@@ -131,7 +148,8 @@ const sessions = new Map();
 
 function createSession(opts = {}) {
   if (!pty) throw new Error("node-pty is not available; rebuild the terminal plugin dependencies.");
-  const shell = opts.shell || defaultShell();
+  const resolved = requireShell(opts.shell);
+  const shell = resolved.path;
   const cwd = resolveCwd(opts.cwd);
   const cols = Number.isFinite(opts.cols) ? Math.max(1, Math.floor(opts.cols)) : 120;
   const rows = Number.isFinite(opts.rows) ? Math.max(1, Math.floor(opts.rows)) : 30;
@@ -155,17 +173,21 @@ function createSession(opts = {}) {
     id,
     term,
     shell,
+    shellKind: resolved.kind === "unknown" ? detectShellKind(shell) : resolved.kind,
     cwd,
     cols,
     rows,
     buffer: "",
+    truncated: false,
     createdAt: Date.now(),
     exited: false,
     exitCode: null,
   };
 
   term.onData((data) => {
-    session.buffer = trimBuffer(session.buffer + data);
+    const next = trimBuffer(session.buffer + data);
+    session.buffer = next.text;
+    if (next.truncated) session.truncated = true;
   });
   term.onExit(({ exitCode }) => {
     session.exited = true;
@@ -184,38 +206,50 @@ function getSession(id) {
 
 function drainBuffer(session, clear = true) {
   const stdout = session.buffer;
-  if (clear) session.buffer = "";
-  return { stdout, stderr: "" };
+  const truncated = session.truncated;
+  if (clear) {
+    session.buffer = "";
+    session.truncated = false;
+  }
+  return { stdout, truncated };
 }
 
-function runExec({ command, cwd, timeoutMs }, extra) {
+function runExec({ command, cwd, timeoutMs, shell: shellInput }, extra) {
   return new Promise((resolve, reject) => {
     if (typeof command !== "string" || !command.trim()) {
       reject(new Error("command is required"));
       return;
     }
     const resolvedCwd = resolveCwd(cwd);
-    const shell = defaultShell();
-    const shellBase = path.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
-    const args = shellBase === "bash" || shellBase === "zsh"
-      ? ["-lc", command]
-      : process.platform === "win32"
-        ? ["/d", "/s", "/c", command]
-        : ["-lc", command];
-    const child = spawn(shell, args, { cwd: resolvedCwd, env: { ...process.env, HOME } });
+    const resolved = requireShell(shellInput);
+    const shell = resolved.path;
+    const kind = resolved.kind === "unknown" ? detectShellKind(shell) : resolved.kind;
+    const args = execArgsForShell(kind, command);
+    const startedAt = Date.now();
+    const child = spawn(shell, args, {
+      cwd: resolvedCwd,
+      env: { ...process.env, HOME },
+      windowsHide: true,
+    });
 
     let stdout = "";
     let stderr = "";
+    let truncated = false;
     let killed = false;
-    const max = MAX_BUFFER_CHARS;
     const progressToken = extra?._meta?.progressToken;
     const signal = extra?.signal;
     let progressSeq = 0;
 
+    const append = (current, chunk) => {
+      const next = trimBuffer(current + chunk);
+      if (next.truncated) truncated = true;
+      return next.text;
+    };
+
     const sendProgress = (text) => {
       if (progressToken === undefined) return;
       progressSeq++;
-      const chunk = text.slice(-2000);
+      const chunk = stripAnsi(text).slice(-2000);
       extra.sendNotification({
         method: "notifications/progress",
         params: { progressToken, progress: progressSeq, message: chunk },
@@ -229,10 +263,9 @@ function runExec({ command, cwd, timeoutMs }, extra) {
         }, timeoutMs)
       : null;
 
-    // If the abort signal fires (async_kill / turn cancel), kill the child process.
     const onAbort = () => {
       killed = true;
-      try { child.kill("SIGKILL"); } catch {}
+      try { child.kill("SIGKILL"); } catch { /* ignore */ }
     };
     if (signal) {
       if (signal.aborted) { onAbort(); }
@@ -241,12 +274,12 @@ function runExec({ command, cwd, timeoutMs }, extra) {
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
-      stdout = trimBuffer(stdout + text);
+      stdout = append(stdout, text);
       sendProgress(text);
     });
     child.stderr.on("data", (chunk) => {
       const text = chunk.toString();
-      stderr = trimBuffer(stderr + text);
+      stderr = append(stderr, text);
       sendProgress(text);
     });
     child.on("error", (err) => {
@@ -257,35 +290,55 @@ function runExec({ command, cwd, timeoutMs }, extra) {
     child.on("close", (code, signalName) => {
       if (timer) clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({ stdout, stderr, exitCode: code, signal: signalName, timedOut: killed, cwd: resolvedCwd, shell });
+      resolve({
+        stdout,
+        stderr,
+        exitCode: code,
+        signal: signalName,
+        timedOut: killed,
+        truncated,
+        cwd: resolvedCwd,
+        shell,
+        shellKind: kind,
+        durationMs: Date.now() - startedAt,
+      });
     });
   });
 }
+
+const SHELL_DESC = `Shell kind or absolute executable path. Kinds: ${SHELL_KINDS.join(", ")}. On Windows, auto prefers pwsh → powershell → Git Bash → cmd.`;
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "exec",
       description:
-        "Run a one-shot shell command and return stdout/stderr/exitCode. cwd defaults to the user's home directory; the conversation workspace is not applied automatically, so pass an absolute cwd if you want a specific folder.",
+        "Run a one-shot shell command and return an agent-readable receipt (stdout/stderr sections) plus structured fields. Prefer shells tool before picking a Windows shell. cwd defaults to the user's home directory; pass an absolute cwd for a specific folder.",
       inputSchema: {
         type: "object",
         required: ["command"],
         properties: {
-          command: { type: "string", description: "Shell command to execute (run via the user's login shell)." },
+          command: { type: "string", description: "Shell command to execute." },
           cwd: { type: "string", description: `Absolute working directory (default: ${HOME}).` },
           timeoutMs: { type: "number", description: "Optional timeout in milliseconds before the command is killed." },
+          shell: { type: "string", description: SHELL_DESC },
         },
       },
     },
     {
+      name: "shells",
+      description:
+        "List shells available on this host (bash, zsh, pwsh, powershell, cmd, wsl) with resolved paths and the auto default. Use before exec/open on Windows.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "open",
       description:
-        "Open a new interactive terminal session (PTY) in the user's shell. cwd defaults to the user's home directory; the conversation workspace is not applied automatically, so pass an absolute cwd to open elsewhere.",
+        "Open a new interactive terminal session (PTY). Prefer shells tool to pick a Windows shell kind. cwd defaults to the user's home directory.",
       inputSchema: {
         type: "object",
         properties: {
-          shell: { type: "string", description: `Shell command (default: $SHELL or ${defaultShell()})` },
+          shell: { type: "string", description: SHELL_DESC },
           cwd: { type: "string", description: `Absolute working directory (default: ${HOME}).` },
           cols: { type: "number", description: "Columns (default: 120)" },
           rows: { type: "number", description: "Rows (default: 30)" },
@@ -306,13 +359,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "read",
-      description: "Read buffered output from a terminal session.",
+      description:
+        "Read buffered output from a terminal session. Agent text strips ANSI by default; structured stdout keeps raw PTY bytes for the UI.",
       inputSchema: {
         type: "object",
         required: ["sessionId"],
         properties: {
           sessionId: { type: "string" },
           clear: { type: "boolean", description: "Clear the buffer after reading (default: true)" },
+          stripAnsi: { type: "boolean", description: "Strip ANSI/OSC sequences in the agent text receipt (default: true)." },
         },
       },
     },
@@ -350,10 +405,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args = {} } = request.params;
   try {
     switch (name) {
+      case "shells": {
+        const listed = listAvailableShells();
+        return mcpToolResult(formatShellsText(listed), listed);
+      }
       case "exec": {
         const timeoutMs = Number.isFinite(args.timeoutMs) ? Math.max(0, Math.floor(args.timeoutMs)) : null;
-        const result = await runExec({ command: args.command, cwd: args.cwd, timeoutMs }, extra);
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        const result = await runExec({
+          command: args.command,
+          cwd: args.cwd,
+          timeoutMs,
+          shell: typeof args.shell === "string" ? args.shell : undefined,
+        }, extra);
+        const stdoutText = stripAnsi(result.stdout);
+        const stderrText = stripAnsi(result.stderr);
+        const structured = {
+          stdout: stdoutText,
+          stderr: stderrText,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+          cwd: result.cwd,
+          shell: result.shell,
+          shellKind: result.shellKind,
+          durationMs: result.durationMs,
+        };
+        const text = formatExecText({
+          ok: result.exitCode === 0 && !result.timedOut,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          shellKind: result.shellKind,
+          shell: result.shell,
+          cwd: result.cwd,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+          stdout: stdoutText,
+          stderr: stderrText,
+          durationMs: result.durationMs,
+        });
+        return mcpToolResult(text, structured);
       }
       case "open": {
         const session = createSession({
@@ -362,29 +453,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           cols: args.cols,
           rows: args.rows,
         });
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ sessionId: session.id, shell: session.shell, cwd: session.cwd, cols: session.cols, rows: session.rows }),
-          }],
+        const structured = {
+          sessionId: session.id,
+          shell: session.shell,
+          shellKind: session.shellKind,
+          cwd: session.cwd,
+          cols: session.cols,
+          rows: session.rows,
         };
+        return mcpToolResult(formatSessionOpenText(structured), structured);
       }
       case "write": {
         const session = getSession(args.sessionId);
         if (session.exited) throw new Error("Session has exited");
         session.term.write(String(args.data ?? ""));
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: session.id, written: true }),
+          { ok: true, sessionId: session.id },
+        );
       }
       case "read": {
         const session = getSession(args.sessionId);
         const clear = args.clear === undefined ? true : Boolean(args.clear);
-        const { stdout, stderr } = drainBuffer(session, clear);
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ stdout, stderr, exited: session.exited, exitCode: session.exitCode }),
-          }],
+        const ansiStripped = args.stripAnsi === undefined ? true : Boolean(args.stripAnsi);
+        const { stdout, truncated } = drainBuffer(session, clear);
+        const structured = {
+          stdout, // raw PTY (ANSI) for UI
+          stderr: "",
+          exited: session.exited,
+          exitCode: session.exitCode,
+          truncated,
+          sessionId: session.id,
+          ansiStripped,
         };
+        const text = formatPtyReadText({
+          sessionId: session.id,
+          exited: session.exited,
+          exitCode: session.exitCode,
+          truncated,
+          stdout,
+          ansiStripped,
+        });
+        return mcpToolResult(text, structured);
       }
       case "resize": {
         const session = getSession(args.sessionId);
@@ -393,20 +503,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         session.cols = cols;
         session.rows = rows;
         if (!session.exited) session.term.resize(cols, rows);
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: session.id, cols, rows, resized: true }),
+          { ok: true, sessionId: session.id, cols, rows },
+        );
       }
       case "close": {
         const session = getSession(args.sessionId);
         if (!session.exited) {
-          try { session.term.kill(); } catch (_) { /* ignore */ }
+          try { session.term.kill(); } catch { /* ignore */ }
         }
         sessions.delete(args.sessionId);
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: args.sessionId, closed: true }),
+          { ok: true, sessionId: args.sessionId },
+        );
       }
       case "list": {
         const list = Array.from(sessions.values()).map((session) => ({
           sessionId: session.id,
           shell: session.shell,
+          shellKind: session.shellKind,
           cwd: session.cwd,
           cols: session.cols,
           rows: session.rows,
@@ -414,13 +531,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           exited: session.exited,
           exitCode: session.exitCode,
         }));
-        return { content: [{ type: "text", text: JSON.stringify(list, null, 2) }] };
+        const structured = { sessions: list, count: list.length };
+        const text = [
+          `ok=true`,
+          `count=${list.length}`,
+          "",
+          "session_id\tshell\tcwd\texited",
+          ...list.map((session) => `${session.sessionId}\t${session.shellKind}\t${session.cwd}\t${session.exited}`),
+          "",
+        ].join("\n");
+        return mcpToolResult(text, structured);
       }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (err) {
-    return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+    return mcpToolResult(`Error: ${err.message}`, { ok: false, error: err.message }, { isError: true });
   }
 });
 

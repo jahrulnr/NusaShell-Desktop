@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-10
+
+### Added
+
+- **Agent-readable MCP receipts (Files + Terminal).** Successful tool calls now
+  return dual payloads: lean plain-text receipts for models (`=== stdout ===`,
+  `=== content ===`, `path:line:text` grep rows) and typed `structuredContent`
+  for UI/host consumers. Domain projection prefers the text body when both are
+  present. Spec: `docs/architecture/mcp-agent-output.md`.
+- **Terminal `shells` tool + Windows shell kinds.** Discover and select
+  `pwsh`, `powershell`, Git `bash`, `cmd`, and `wsl` (plus Unix `bash`/`zsh`).
+  `exec` / `open` accept a kind or absolute executable; Windows `auto` prefers
+  `pwsh` → `powershell` → Git Bash → `cmd` instead of defaulting to bare cmd.
+
+### Changed
+
+- Terminal PTY `read` strips ANSI in the agent text receipt by default while
+  keeping raw PTY bytes in `structuredContent.stdout` for xterm.
+- Terminal/Files howto prompts document the new receipts and shell selection.
+
 ## [0.7.3] - 2026-08-10
 
 ### Fixed

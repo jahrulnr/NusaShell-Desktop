@@ -9,9 +9,11 @@ describe("Terminal MCP prompts", () => {
     const prompt = getTerminalPrompt("howto");
     const text = prompt.messages[0].content.text;
     expect(text).toContain("exec");
+    expect(text).toContain("shells");
     expect(text).toContain("open");
     expect(text).toContain("absolute cwd");
     expect(text).toContain("AGENTS.md");
+    expect(text).toContain("pwsh");
   });
 
   it("rejects unknown prompts", () => {
