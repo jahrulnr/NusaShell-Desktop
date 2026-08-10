@@ -24,7 +24,7 @@ describe("loadConfig", () => {
       userPrompt: "",
       timeoutMs: 60000,
       maxRepeatedToolCalls: 50,
-      maxAutoContinues: 10,
+      maxAutoContinues: 1000,
       jobMaxToolRounds: undefined,
       softRecoverAttempts: 1,
       maxConcurrentToolCalls: 8,
@@ -92,6 +92,7 @@ describe("loadConfig", () => {
       NUSASHELL_AI_CONTEXT_RESERVE_TOKENS: "2000",
       NUSASHELL_AI_CONTEXT_RECENT_TURNS: "2",
       NUSASHELL_AI_CONTEXT_SUMMARY_MAX_CHARS: "6000",
+      NUSASHELL_AI_MAX_AUTO_CONTINUES: "1000",
     });
     expect(config).toEqual({
       port: 3000,
@@ -114,7 +115,7 @@ describe("loadConfig", () => {
         userPrompt: "",
         timeoutMs: 60000,
         maxRepeatedToolCalls: 50,
-        maxAutoContinues: 10,
+        maxAutoContinues: 1000,
         jobMaxToolRounds: undefined,
         softRecoverAttempts: 1,
         maxConcurrentToolCalls: 8,

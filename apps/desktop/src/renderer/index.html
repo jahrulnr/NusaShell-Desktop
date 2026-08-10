@@ -1038,6 +1038,7 @@
             <div class="settings-card-title">Usage limits</div>
             <label class="settings-field">Max tool rounds<input id="settings-ai-max-tool-rounds" type="number" min="1" max="10000" value="50"><span class="settings-field-help">Maximum tool-call rounds per task (1–10000 for long agentic work).</span></label>
             <label class="settings-field">Max repeated tool calls<input id="settings-ai-max-repeated-tool-calls" type="number" min="1" max="200" value="50"><span class="settings-field-help">Stop if the same tool call repeats this many times.</span></label>
+            <label class="settings-field">Max auto-continues<input id="settings-ai-max-auto-continues" type="number" min="0" max="10000" value="10"><span class="settings-field-help">Maximum automatic follow-up turns when tasks remain in progress (0 for unlimited, 1–10000).</span></label>
             <div class="settings-row"><span>Applies without restart</span><button class="mini-btn" type="submit">Save limits</button></div>
           </form>
 

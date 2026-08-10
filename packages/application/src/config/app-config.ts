@@ -75,7 +75,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       maxRepeatedToolCalls: integerInRange(env.NUSASHELL_AI_MAX_REPEATED_TOOL_CALLS, 1, 200, 50),
       softRecoverAttempts: integerInRange(env.NUSASHELL_AI_SOFT_RECOVER_ATTEMPTS, 0, 3, 1),
       maxConcurrentToolCalls: integerInRange(env.NUSASHELL_AI_MAX_CONCURRENT_TOOL_CALLS, 1, 32, 8),
-      maxAutoContinues: integerInRange(env.NUSASHELL_AI_MAX_AUTO_CONTINUES, 0, 10_000, 10),
+      maxAutoContinues: integerInRange(env.NUSASHELL_AI_MAX_AUTO_CONTINUES, 0, 10_000, 1000),
       jobMaxToolRounds: parseOptionalMaxToolRounds(env.NUSASHELL_JOB_MAX_TOOL_ROUNDS),
       strategy: parseAiStrategy(env.NUSASHELL_AI_STRATEGY),
       totalAttemptBudget: integerInRange(env.NUSASHELL_AI_TOTAL_ATTEMPT_BUDGET, 1, 32, 4),

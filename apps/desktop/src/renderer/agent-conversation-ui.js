@@ -436,7 +436,8 @@ export function composerTextareaSize({
  * Codex-aligned (memento replacement): when the checkpoint has
  * `retainedUserMessages`, the provider context is:
  *   retained user messages (chronological) + summary user message + residual
- *   store messages (everything after `compactedMessageCount`).
+ *   store messages after the absolute `compactedThroughPosition` boundary.
+ *   Legacy checkpoints without positions fall back to `compactedMessageCount`.
  * The summary is a `role:"user"` message with the `SUMMARY_PREFIX` marker,
  * not a `role:"system"` blurb, so the model treats it as durable context.
  *
@@ -468,7 +469,18 @@ export function buildAgentContext(conversation) {
     ];
   }
 
-  const residual = messages.slice(checkpoint.compactedMessageCount).filter((m) => m.status !== "interrupted").flatMap(toProviderMessages);
+  const hasAbsoluteBoundary = Number.isInteger(checkpoint.compactedThroughPosition)
+    && checkpoint.compactedThroughPosition > 0;
+  const residualMessages = hasAbsoluteBoundary
+    ? messages.filter((message) => (
+      Number.isInteger(message.position)
+        ? message.position > checkpoint.compactedThroughPosition
+        : true
+    ))
+    : messages.slice(checkpoint.compactedMessageCount);
+  const residual = residualMessages
+    .filter((m) => m.status !== "interrupted")
+    .flatMap(toProviderMessages);
 
   // Codex-aligned memento: retained user messages + summary user message.
   if (Array.isArray(checkpoint.retainedUserMessages) && checkpoint.retainedUserMessages.length >= 0) {

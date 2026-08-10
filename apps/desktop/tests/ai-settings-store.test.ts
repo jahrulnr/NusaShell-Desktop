@@ -170,6 +170,7 @@ describe("AiSettingsStore", () => {
       stream: false,
       vision: "off",
       userPrompt: "Be concise.",
+      maxAutoContinues: 25,
     });
 
     expect(result).toMatchObject({
@@ -178,6 +179,7 @@ describe("AiSettingsStore", () => {
       stream: false,
       vision: "off",
       userPrompt: "Be concise.",
+      maxAutoContinues: 25,
     });
     await expect(new AiSettingsStore(path, userPromptPath).load()).resolves.toMatchObject({
       strategy: "round-robin",
@@ -185,6 +187,7 @@ describe("AiSettingsStore", () => {
       stream: false,
       vision: "off",
       userPrompt: "Be concise.",
+      maxAutoContinues: 25,
     });
     await expect(readFile(userPromptPath, "utf8")).resolves.toBe("Be concise.");
   });

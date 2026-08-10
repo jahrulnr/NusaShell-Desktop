@@ -1739,6 +1739,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#settings-ai-user-prompt").value = aiSettings.userPrompt || "";
     $("#settings-ai-max-tool-rounds").value = aiSettings.maxToolRounds ?? 50;
     $("#settings-ai-max-repeated-tool-calls").value = aiSettings.maxRepeatedToolCalls ?? 50;
+    $("#settings-ai-max-auto-continues").value = aiSettings.maxAutoContinues ?? 10;
     $("#settings-ai-compaction").checked = aiSettings.compactionEnabled !== false;
     $("#settings-ai-max-input-tokens").value = aiSettings.maxInputTokens ?? 200000;
     $("#settings-ai-reserve-tokens").value = aiSettings.reserveTokens ?? 16000;
@@ -1944,6 +1945,7 @@ document.addEventListener("DOMContentLoaded", () => {
       aiSettings = await window.shell.aiProviders.updateRuntime({
         maxToolRounds: Number($("#settings-ai-max-tool-rounds").value),
         maxRepeatedToolCalls: Number($("#settings-ai-max-repeated-tool-calls").value),
+        maxAutoContinues: Number($("#settings-ai-max-auto-continues").value),
       });
       syncAiControls();
       showToast("Usage limits saved.", "success");

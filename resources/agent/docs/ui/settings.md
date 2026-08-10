@@ -166,7 +166,7 @@ Controls how many tool calls and rounds the agent can make per turn. Prevents ru
 - **Agent limits form** (`#ai-limits-form`):
   - Section: Agent limits
   - Type: form
-  - Action: Contains max tool rounds and max repeated tool calls. Submit saves the limits.
+  - Action: Contains max tool rounds, max repeated tool calls, and max auto-continues. Submit saves the limits.
 
 - **Max tool rounds** (`#settings-ai-max-tool-rounds`):
   - Section: Agent limits
@@ -177,6 +177,11 @@ Controls how many tool calls and rounds the agent can make per turn. Prevents ru
   - Section: Agent limits
   - Type: number input
   - Action: Stops the agent if the same tool call repeats this many times (1–200). Default 50.
+
+- **Max auto-continues** (`#settings-ai-max-auto-continues`):
+  - Section: Agent limits
+  - Type: number input
+  - Action: Maximum automatic follow-up turns when tasks remain in progress (0 for unlimited, 1–10000). Default 10.
 
 ## Context compaction
 

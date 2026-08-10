@@ -145,6 +145,28 @@ describe("agent conversation UI helpers", () => {
     ]);
   });
 
+  it("keeps messages after an absolute compaction position when the store was compacted", () => {
+    const context = buildAgentContext({
+      checkpoint: {
+        summary: "Old handoff for ticket 2.",
+        compactedMessageCount: 51,
+        compactedThroughPosition: 66,
+        retainedUserMessages: [],
+        via: "provider",
+      },
+      // The store keeps only the post-compaction tail, but message positions
+      // remain absolute. `compactedMessageCount` is therefore not an array index.
+      messages: [
+        { role: "assistant", content: "boundary answer", position: 66 },
+        { role: "assistant", content: "ticket 2 answer", position: 67 },
+        { role: "user", content: "tiket 8 masih todo. kerjakan", position: 74 },
+      ],
+    });
+
+    expect(context).toContainEqual({ role: "user", content: "tiket 8 masih todo. kerjakan" });
+    expect(context).not.toContainEqual({ role: "assistant", content: "boundary answer" });
+  });
+
   it("translates a runner checkpoint into an absolute durable checkpoint", () => {
     expect(mergeCompactionCheckpoint(
       { summary: "Previous", compactedMessageCount: 4, via: "provider" },

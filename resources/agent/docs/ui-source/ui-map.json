@@ -977,7 +977,8 @@
           "controls": [
             "ai-limits-form",
             "settings-ai-max-tool-rounds",
-            "settings-ai-max-repeated-tool-calls"
+            "settings-ai-max-repeated-tool-calls",
+            "settings-ai-max-auto-continues"
           ]
         },
         {
@@ -2710,7 +2711,7 @@
       "section": "Agent limits",
       "label": "Agent limits form",
       "type": "form",
-      "action": "Contains max tool rounds and max repeated tool calls. Submit saves the limits."
+      "action": "Contains max tool rounds, max repeated tool calls, and max auto-continues. Submit saves the limits."
     },
     "settings-ai-max-tool-rounds": {
       "section": "Agent limits",
@@ -2723,6 +2724,12 @@
       "label": "Max repeated tool calls",
       "type": "number input",
       "action": "Stops the agent if the same tool call repeats this many times (1–200). Default 50."
+    },
+    "settings-ai-max-auto-continues": {
+      "section": "Agent limits",
+      "label": "Max auto-continues",
+      "type": "number input",
+      "action": "Maximum automatic follow-up turns when tasks remain in progress (0 for unlimited, 1–10000). Default 10."
     },
     "ai-context-form": {
       "section": "Context compaction",
