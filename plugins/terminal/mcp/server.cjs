@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3478,8 +3478,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6878,12 +6878,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -6893,10 +6893,10 @@ var require_dist = __commonJS({
 
 // mcp/server.js
 var import_node_os = __toESM(require("node:os"), 1);
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
+var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_path2 = __toESM(require("node:path"), 1);
 var import_node_crypto = require("node:crypto");
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 
 // ../../node_modules/zod/v4/core/core.js
 var _a;
@@ -7139,10 +7139,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7551,11 +7551,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -7702,16 +7702,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path2 = []) => {
+  const processError = (error3, path3 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path3, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -15491,21 +15491,380 @@ function getTerminalPrompt(name) {
           "For project-specific rules, retrieve the Files plugin's workspace-root AGENTS.md resource through mcp_context before editing or running project commands. Treat it as project guidance below system and user instructions.",
           "",
           "Main tools:",
-          "- exec: run one command and return bounded output.",
-          "- open: open an interactive session.",
-          "- write / read: send input and read buffered output.",
+          "- shells: list installed shells (bash, zsh, pwsh, powershell, cmd, wsl) and the auto default \u2014 call this first on Windows.",
+          '- exec: run one command; returns an agent-readable receipt (=== stdout === / === stderr ===) plus structured fields. Pass shell="pwsh"|"powershell"|"bash"|"cmd"|"wsl" when auto is wrong.',
+          "- open: open an interactive session (same shell kinds).",
+          "- write / read: send input and read buffered output (read strips ANSI in agent text; UI keeps raw PTY).",
           "- resize: change PTY dimensions.",
           "- close / list: close or inspect sessions.",
           "",
-          "Pass an absolute cwd when a specific directory matters; do not assume the conversation workspace is the process cwd. Commands execute with the user's shell permissions and can change files or access external systems. Use tool_schema for exact arguments and confirm destructive or irreversible commands before running them."
+          "Pass an absolute cwd when a specific directory matters; do not assume the conversation workspace is the process cwd. Prefer pwsh/bash over cmd.exe for scripting. Commands execute with the user's shell permissions and can change files or access external systems. Use tool_schema for exact arguments and confirm destructive or irreversible commands before running them."
         ].join("\n")
       }
     }]
   };
 }
 
+// mcp/shell-resolve.js
+var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path = __toESM(require("node:path"), 1);
+var import_node_child_process = require("node:child_process");
+var SHELL_KINDS = Object.freeze([
+  "auto",
+  "bash",
+  "zsh",
+  "pwsh",
+  "powershell",
+  "cmd",
+  "wsl"
+]);
+function exeBase(executable) {
+  const normalized = String(executable || "").replace(/\\/g, "/");
+  return import_node_path.default.posix.basename(normalized).replace(/\.exe$/i, "").toLowerCase();
+}
+function detectShellKind(executable) {
+  const base = exeBase(executable);
+  if (base === "bash") return "bash";
+  if (base === "zsh") return "zsh";
+  if (base === "pwsh") return "pwsh";
+  if (base === "powershell") return "powershell";
+  if (base === "cmd") return "cmd";
+  if (base === "wsl") return "wsl";
+  return "unknown";
+}
+function execArgsForShell(kind, command) {
+  switch (kind) {
+    case "bash":
+    case "zsh":
+      return ["-lc", command];
+    case "powershell":
+    case "pwsh":
+      return ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command];
+    case "cmd":
+      return ["/d", "/s", "/c", command];
+    case "wsl":
+      return ["-e", "bash", "-lc", command];
+    default:
+      return process.platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
+  }
+}
+function normalizeDeps(deps = {}) {
+  return {
+    platform: deps.platform ?? process.platform,
+    env: deps.env ?? process.env,
+    exists: deps.exists ?? ((candidate) => {
+      try {
+        return import_node_fs.default.existsSync(candidate);
+      } catch {
+        return false;
+      }
+    }),
+    which: deps.which ?? defaultWhich
+  };
+}
+function defaultWhich(name) {
+  try {
+    if (process.platform === "win32") {
+      const out2 = (0, import_node_child_process.execFileSync)("where.exe", [name], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true
+      });
+      const first2 = String(out2).split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+      return first2 || null;
+    }
+    const out = (0, import_node_child_process.execFileSync)("which", [name], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    const first = String(out).split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    return first || null;
+  } catch {
+    return null;
+  }
+}
+function firstExisting(deps, candidates) {
+  for (const candidate of candidates) {
+    if (candidate && deps.exists(candidate)) return candidate;
+  }
+  return null;
+}
+function locateNamed(deps, name, extra = []) {
+  const fromWhich = deps.which(name);
+  if (fromWhich && deps.exists(fromWhich)) {
+    return { path: fromWhich, source: "which" };
+  }
+  const discovered = firstExisting(deps, extra);
+  if (discovered) return { path: discovered, source: "discovery" };
+  return null;
+}
+function winGitBashCandidates(deps) {
+  const programFiles = deps.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = deps.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const localAppData = deps.env.LOCALAPPDATA || "";
+  return [
+    import_node_path.default.win32.join(programFiles, "Git", "bin", "bash.exe"),
+    import_node_path.default.win32.join(programFiles, "Git", "usr", "bin", "bash.exe"),
+    import_node_path.default.win32.join(programFilesX86, "Git", "bin", "bash.exe"),
+    localAppData ? import_node_path.default.win32.join(localAppData, "Programs", "Git", "bin", "bash.exe") : ""
+  ].filter(Boolean);
+}
+function winPwshCandidates(deps) {
+  const programFiles = deps.env.ProgramFiles || "C:\\Program Files";
+  return [
+    import_node_path.default.win32.join(programFiles, "PowerShell", "7", "pwsh.exe"),
+    import_node_path.default.win32.join(programFiles, "PowerShell", "7-preview", "pwsh.exe")
+  ];
+}
+function winPowershellCandidates(deps) {
+  const root = deps.env.SystemRoot || deps.env.windir || "C:\\Windows";
+  return [import_node_path.default.win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")];
+}
+function winCmdCandidates(deps) {
+  const comSpec = deps.env.ComSpec;
+  const root = deps.env.SystemRoot || deps.env.windir || "C:\\Windows";
+  return [comSpec, import_node_path.default.win32.join(root, "System32", "cmd.exe")].filter(Boolean);
+}
+function winWslCandidates(deps) {
+  const root = deps.env.SystemRoot || deps.env.windir || "C:\\Windows";
+  return [
+    import_node_path.default.win32.join(root, "System32", "wsl.exe"),
+    "wsl.exe"
+  ];
+}
+function resolveKind(kind, deps) {
+  if (deps.platform === "win32") {
+    if (kind === "pwsh") {
+      const hit = locateNamed(deps, "pwsh.exe", winPwshCandidates(deps)) || locateNamed(deps, "pwsh", winPwshCandidates(deps));
+      return hit ? { kind: "pwsh", path: hit.path, available: true, source: hit.source } : { kind: "pwsh", path: "pwsh.exe", available: false, source: "fallback" };
+    }
+    if (kind === "powershell") {
+      const hit = locateNamed(deps, "powershell.exe", winPowershellCandidates(deps));
+      return hit ? { kind: "powershell", path: hit.path, available: true, source: hit.source } : { kind: "powershell", path: "powershell.exe", available: false, source: "fallback" };
+    }
+    if (kind === "bash") {
+      const hit = locateNamed(deps, "bash.exe", winGitBashCandidates(deps)) || locateNamed(deps, "bash", winGitBashCandidates(deps));
+      return hit ? { kind: "bash", path: hit.path, available: true, source: hit.source } : { kind: "bash", path: "bash.exe", available: false, source: "fallback" };
+    }
+    if (kind === "zsh") {
+      const hit = locateNamed(deps, "zsh.exe") || locateNamed(deps, "zsh");
+      return hit ? { kind: "zsh", path: hit.path, available: true, source: hit.source } : { kind: "zsh", path: "zsh.exe", available: false, source: "fallback" };
+    }
+    if (kind === "cmd") {
+      const hit = firstExisting(deps, winCmdCandidates(deps));
+      return hit ? { kind: "cmd", path: hit, available: true, source: "discovery" } : { kind: "cmd", path: "cmd.exe", available: false, source: "fallback" };
+    }
+    if (kind === "wsl") {
+      const hit = locateNamed(deps, "wsl.exe", winWslCandidates(deps));
+      return hit ? { kind: "wsl", path: hit.path, available: true, source: hit.source } : { kind: "wsl", path: "wsl.exe", available: false, source: "fallback" };
+    }
+  }
+  if (kind === "bash" || kind === "zsh" || kind === "pwsh" || kind === "powershell") {
+    const names = kind === "powershell" ? ["powershell", "pwsh"] : [kind];
+    for (const name of names) {
+      const hit = locateNamed(deps, name, [`/bin/${name}`, `/usr/bin/${name}`, `/usr/local/bin/${name}`]);
+      if (hit) {
+        return { kind: (
+          /** @type {ShellKind} */
+          kind === "powershell" && name === "pwsh" ? "pwsh" : kind
+        ), path: hit.path, available: true, source: hit.source };
+      }
+    }
+    return { kind: (
+      /** @type {ShellKind} */
+      kind
+    ), path: kind, available: false, source: "fallback" };
+  }
+  if (kind === "cmd" || kind === "wsl") {
+    return { kind: (
+      /** @type {ShellKind} */
+      kind
+    ), path: kind, available: false, source: "fallback" };
+  }
+  return { kind: "unknown", path: String(kind), available: false, source: "fallback" };
+}
+function resolveAuto(deps) {
+  if (deps.platform === "win32") {
+    const configured2 = deps.env.SHELL;
+    if (configured2) {
+      const base = import_node_path.default.posix.basename(configured2).replace(/\.exe$/i, "").toLowerCase();
+      if (base === "bash" || base === "zsh") {
+        const mapped = resolveKind(base, deps);
+        if (mapped.available) return { ...mapped, source: mapped.source === "fallback" ? "env" : mapped.source };
+      }
+    }
+    for (
+      const kind of
+      /** @type {ShellKind[]} */
+      ["pwsh", "powershell", "bash", "cmd"]
+    ) {
+      const resolved = resolveKind(kind, deps);
+      if (resolved.available) return resolved;
+    }
+    return { kind: "cmd", path: deps.env.ComSpec || "cmd.exe", available: true, source: "fallback" };
+  }
+  const configured = deps.env.SHELL;
+  if (configured) {
+    return {
+      kind: detectShellKind(configured),
+      path: configured,
+      available: true,
+      source: "env"
+    };
+  }
+  const bash = resolveKind("bash", deps);
+  if (bash.available) return bash;
+  return { kind: "bash", path: "/bin/bash", available: true, source: "fallback" };
+}
+function resolveShell(shell, deps) {
+  const normalized = normalizeDeps(deps);
+  const raw = typeof shell === "string" && shell.trim() ? shell.trim() : "auto";
+  const lower = raw.toLowerCase();
+  if (lower === "auto" || lower === "default") {
+    return resolveAuto(normalized);
+  }
+  if (SHELL_KINDS.includes(
+    /** @type {any} */
+    lower
+  ) && lower !== "auto") {
+    return resolveKind(
+      /** @type {ShellKind} */
+      lower,
+      normalized
+    );
+  }
+  const available = normalized.exists(raw);
+  return {
+    kind: detectShellKind(raw),
+    path: raw,
+    available,
+    source: "path"
+  };
+}
+function listAvailableShells(deps) {
+  const normalized = normalizeDeps(deps);
+  const auto = resolveAuto(normalized);
+  const kinds = normalized.platform === "win32" ? ["pwsh", "powershell", "bash", "zsh", "cmd", "wsl"] : ["bash", "zsh", "pwsh", "powershell"];
+  const shells = [];
+  const seenKinds = /* @__PURE__ */ new Set();
+  for (const kind of kinds) {
+    const resolved = resolveKind(kind, normalized);
+    if (!resolved.available) continue;
+    if (seenKinds.has(resolved.kind)) continue;
+    seenKinds.add(resolved.kind);
+    shells.push(resolved);
+  }
+  if (auto.available && !seenKinds.has(auto.kind)) {
+    shells.unshift(auto);
+  } else if (auto.available) {
+    const idx = shells.findIndex((item) => item.kind === auto.kind);
+    if (idx >= 0) shells[idx] = { ...shells[idx], path: auto.path, source: auto.source };
+  }
+  return {
+    platform: normalized.platform,
+    defaultKind: auto.kind === "unknown" ? "auto" : auto.kind,
+    defaultPath: auto.path,
+    shells
+  };
+}
+
+// mcp/agent-output.js
+var ANSI_CSI_RE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+var ANSI_OSC_RE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+var ANSI_MISC_RE = /\u001b[@-Z\\-_]/g;
+function stripAnsi(text) {
+  return String(text ?? "").replace(ANSI_OSC_RE, "").replace(ANSI_CSI_RE, "").replace(ANSI_MISC_RE, "");
+}
+function headerLines(fields) {
+  const lines = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === void 0) continue;
+    lines.push(`${key}=${value === null ? "" : String(value)}`);
+  }
+  return lines.join("\n");
+}
+function formatExecText(input) {
+  const header = headerLines({
+    ok: input.ok,
+    exit_code: input.exitCode,
+    signal: input.signal ?? "",
+    shell: input.shellKind,
+    shell_path: input.shell,
+    cwd: input.cwd,
+    timed_out: Boolean(input.timedOut),
+    truncated: Boolean(input.truncated),
+    ...input.durationMs !== void 0 ? { duration_ms: input.durationMs } : {}
+  });
+  return [
+    header,
+    "",
+    "=== stdout ===",
+    String(input.stdout ?? "").replace(/\s+$/u, ""),
+    "=== stderr ===",
+    String(input.stderr ?? "").replace(/\s+$/u, ""),
+    ""
+  ].join("\n");
+}
+function formatPtyReadText(input) {
+  const body = input.ansiStripped ? stripAnsi(input.stdout ?? "") : String(input.stdout ?? "");
+  const header = headerLines({
+    ok: true,
+    session_id: input.sessionId,
+    exited: Boolean(input.exited),
+    exit_code: input.exitCode,
+    truncated: Boolean(input.truncated),
+    ansi_stripped: Boolean(input.ansiStripped)
+  });
+  return [
+    header,
+    "",
+    "=== output ===",
+    body.replace(/\s+$/u, ""),
+    ""
+  ].join("\n");
+}
+function formatShellsText(input) {
+  const lines = [
+    headerLines({
+      ok: true,
+      platform: input.platform,
+      default: input.defaultKind,
+      count: Array.isArray(input.shells) ? input.shells.length : 0
+    }),
+    "",
+    "kind	path	source"
+  ];
+  for (const shell of input.shells ?? []) {
+    lines.push(`${shell.kind}	${shell.path}	${shell.source}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function formatOkText(fields) {
+  return `${headerLines({ ok: true, ...fields })}
+`;
+}
+function formatSessionOpenText(input) {
+  return formatOkText({
+    session_id: input.sessionId,
+    shell: input.shellKind,
+    shell_path: input.shell,
+    cwd: input.cwd,
+    cols: input.cols,
+    rows: input.rows
+  });
+}
+function mcpToolResult(text, structured, opts = {}) {
+  const result = {
+    content: [{ type: "text", text: String(text) }],
+    structuredContent: structured
+  };
+  if (opts.isError) result.isError = true;
+  return result;
+}
+
 // mcp/server.js
-var moduleDir = process.argv[1] ? import_node_path.default.dirname(import_node_path.default.resolve(process.argv[1])) : import_node_path.default.dirname(process.execPath);
+var moduleDir = process.argv[1] ? import_node_path2.default.dirname(import_node_path2.default.resolve(process.argv[1])) : import_node_path2.default.dirname(process.execPath);
 var pty;
 try {
   pty = require("node-pty");
@@ -15514,41 +15873,41 @@ try {
 }
 var HOME = import_node_os.default.homedir();
 var MAX_BUFFER_CHARS = 200 * 1024;
-var BOOTSTRAP_ROOT = process.env.NUSASHELL_USER_DATA ? import_node_path.default.join(import_node_path.default.resolve(process.env.NUSASHELL_USER_DATA), "runtime") : import_node_os.default.tmpdir();
-var BOOTSTRAP_DIR = import_node_path.default.join(BOOTSTRAP_ROOT, "terminal-bootstrap");
-var BASH_RC = import_node_path.default.join(BOOTSTRAP_DIR, "bashrc");
-var ZSH_RC = import_node_path.default.join(BOOTSTRAP_DIR, ".zshrc");
-var COLOR_BOOTSTRAP_SRC = import_node_path.default.join(moduleDir, "color-bootstrap.sh");
+var BOOTSTRAP_ROOT = process.env.NUSASHELL_USER_DATA ? import_node_path2.default.join(import_node_path2.default.resolve(process.env.NUSASHELL_USER_DATA), "runtime") : import_node_os.default.tmpdir();
+var BOOTSTRAP_DIR = import_node_path2.default.join(BOOTSTRAP_ROOT, "terminal-bootstrap");
+var BASH_RC = import_node_path2.default.join(BOOTSTRAP_DIR, "bashrc");
+var ZSH_RC = import_node_path2.default.join(BOOTSTRAP_DIR, ".zshrc");
+var COLOR_BOOTSTRAP_SRC = import_node_path2.default.join(moduleDir, "color-bootstrap.sh");
 function ensureBootstrapFiles() {
-  import_node_fs.default.mkdirSync(BOOTSTRAP_DIR, { recursive: true });
-  const color = import_node_fs.default.readFileSync(COLOR_BOOTSTRAP_SRC, "utf8");
-  import_node_fs.default.writeFileSync(
+  import_node_fs2.default.mkdirSync(BOOTSTRAP_DIR, { recursive: true });
+  const color = import_node_fs2.default.readFileSync(COLOR_BOOTSTRAP_SRC, "utf8");
+  import_node_fs2.default.writeFileSync(
     BASH_RC,
     `# NusaShell bash bootstrap
 [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"
 ${color}`
   );
-  import_node_fs.default.writeFileSync(
+  import_node_fs2.default.writeFileSync(
     ZSH_RC,
     `# NusaShell zsh bootstrap
 [ -f "$HOME/.zshrc" ] && . "$HOME/.zshrc"
 ${color}`
   );
 }
+function exeBase2(shell) {
+  return import_node_path2.default.posix.basename(String(shell || "").replace(/\\/g, "/")).replace(/\.exe$/i, "").toLowerCase();
+}
 function shellSpawnArgs(shell) {
-  const base = import_node_path.default.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
+  const base = exeBase2(shell);
   if (base === "bash") {
     return ["--rcfile", BASH_RC];
-  }
-  if (base === "zsh" || String(shell).endsWith("/zsh")) {
-    return [];
   }
   return [];
 }
 function shellSpawnEnv(shell, baseEnv) {
   const env = { ...baseEnv };
-  const base = import_node_path.default.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
-  if (base === "zsh" || String(shell).endsWith("/zsh")) {
+  const base = exeBase2(shell);
+  if (base === "zsh") {
     env.ZDOTDIR = BOOTSTRAP_DIR;
   }
   return env;
@@ -15563,26 +15922,29 @@ function defaultCwd() {
 }
 function resolveCwd(input) {
   const cwd = typeof input === "string" && input.trim() ? input.trim() : defaultCwd();
-  if (!import_node_path.default.isAbsolute(cwd)) {
+  if (!import_node_path2.default.isAbsolute(cwd)) {
     throw new Error(`cwd must be an absolute path (got: ${cwd}). The conversation workspace is not applied automatically; pass the full path explicitly.`);
   }
-  const stat = import_node_fs.default.statSync(cwd, { throwIfNoEntry: false });
+  const stat = import_node_fs2.default.statSync(cwd, { throwIfNoEntry: false });
   if (!stat || !stat.isDirectory()) {
     throw new Error(`cwd is not a directory: ${cwd}`);
   }
   return cwd;
 }
-function defaultShell() {
-  const configured = process.env.SHELL;
-  if (process.platform === "win32" && configured) {
-    const base = import_node_path.default.posix.basename(configured).replace(/\.exe$/i, "").toLowerCase();
-    if (base === "bash" || base === "zsh") return `${base}.exe`;
+function requireShell(shellInput) {
+  const resolved = resolveShell(shellInput);
+  if (!resolved.available) {
+    throw new Error(
+      `Shell "${shellInput || "auto"}" is not available on this host. Call the shells tool to list installed kinds (${SHELL_KINDS.filter((k) => k !== "auto").join(", ")}).`
+    );
   }
-  return configured || (process.platform === "win32" ? "cmd.exe" : "/bin/bash");
+  return resolved;
 }
 function trimBuffer(text) {
-  if (text.length > MAX_BUFFER_CHARS) return text.slice(text.length - MAX_BUFFER_CHARS);
-  return text;
+  if (text.length > MAX_BUFFER_CHARS) {
+    return { text: text.slice(text.length - MAX_BUFFER_CHARS), truncated: true };
+  }
+  return { text, truncated: false };
 }
 var server = new Server(
   { name: "nusashell-terminal", version: "1.0.0" },
@@ -15595,7 +15957,8 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => getTerminalP
 var sessions = /* @__PURE__ */ new Map();
 function createSession(opts = {}) {
   if (!pty) throw new Error("node-pty is not available; rebuild the terminal plugin dependencies.");
-  const shell = opts.shell || defaultShell();
+  const resolved = requireShell(opts.shell);
+  const shell = resolved.path;
   const cwd = resolveCwd(opts.cwd);
   const cols = Number.isFinite(opts.cols) ? Math.max(1, Math.floor(opts.cols)) : 120;
   const rows = Number.isFinite(opts.rows) ? Math.max(1, Math.floor(opts.rows)) : 30;
@@ -15617,16 +15980,20 @@ function createSession(opts = {}) {
     id,
     term,
     shell,
+    shellKind: resolved.kind === "unknown" ? detectShellKind(shell) : resolved.kind,
     cwd,
     cols,
     rows,
     buffer: "",
+    truncated: false,
     createdAt: Date.now(),
     exited: false,
     exitCode: null
   };
   term.onData((data) => {
-    session.buffer = trimBuffer(session.buffer + data);
+    const next = trimBuffer(session.buffer + data);
+    session.buffer = next.text;
+    if (next.truncated) session.truncated = true;
   });
   term.onExit(({ exitCode }) => {
     session.exited = true;
@@ -15642,31 +16009,46 @@ function getSession(id) {
 }
 function drainBuffer(session, clear = true) {
   const stdout = session.buffer;
-  if (clear) session.buffer = "";
-  return { stdout, stderr: "" };
+  const truncated = session.truncated;
+  if (clear) {
+    session.buffer = "";
+    session.truncated = false;
+  }
+  return { stdout, truncated };
 }
-function runExec({ command, cwd, timeoutMs }, extra) {
+function runExec({ command, cwd, timeoutMs, shell: shellInput }, extra) {
   return new Promise((resolve, reject) => {
     if (typeof command !== "string" || !command.trim()) {
       reject(new Error("command is required"));
       return;
     }
     const resolvedCwd = resolveCwd(cwd);
-    const shell = defaultShell();
-    const shellBase = import_node_path.default.basename(shell || "").replace(/\.exe$/i, "").toLowerCase();
-    const args = shellBase === "bash" || shellBase === "zsh" ? ["-lc", command] : process.platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
-    const child = (0, import_node_child_process.spawn)(shell, args, { cwd: resolvedCwd, env: { ...process.env, HOME } });
+    const resolved = requireShell(shellInput);
+    const shell = resolved.path;
+    const kind = resolved.kind === "unknown" ? detectShellKind(shell) : resolved.kind;
+    const args = execArgsForShell(kind, command);
+    const startedAt = Date.now();
+    const child = (0, import_node_child_process2.spawn)(shell, args, {
+      cwd: resolvedCwd,
+      env: { ...process.env, HOME },
+      windowsHide: true
+    });
     let stdout = "";
     let stderr = "";
+    let truncated = false;
     let killed = false;
-    const max = MAX_BUFFER_CHARS;
     const progressToken = extra?._meta?.progressToken;
     const signal = extra?.signal;
     let progressSeq = 0;
+    const append = (current, chunk) => {
+      const next = trimBuffer(current + chunk);
+      if (next.truncated) truncated = true;
+      return next.text;
+    };
     const sendProgress = (text) => {
       if (progressToken === void 0) return;
       progressSeq++;
-      const chunk = text.slice(-2e3);
+      const chunk = stripAnsi(text).slice(-2e3);
       extra.sendNotification({
         method: "notifications/progress",
         params: { progressToken, progress: progressSeq, message: chunk }
@@ -15693,12 +16075,12 @@ function runExec({ command, cwd, timeoutMs }, extra) {
     }
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
-      stdout = trimBuffer(stdout + text);
+      stdout = append(stdout, text);
       sendProgress(text);
     });
     child.stderr.on("data", (chunk) => {
       const text = chunk.toString();
-      stderr = trimBuffer(stderr + text);
+      stderr = append(stderr, text);
       sendProgress(text);
     });
     child.on("error", (err) => {
@@ -15709,32 +16091,50 @@ function runExec({ command, cwd, timeoutMs }, extra) {
     child.on("close", (code, signalName) => {
       if (timer) clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({ stdout, stderr, exitCode: code, signal: signalName, timedOut: killed, cwd: resolvedCwd, shell });
+      resolve({
+        stdout,
+        stderr,
+        exitCode: code,
+        signal: signalName,
+        timedOut: killed,
+        truncated,
+        cwd: resolvedCwd,
+        shell,
+        shellKind: kind,
+        durationMs: Date.now() - startedAt
+      });
     });
   });
 }
+var SHELL_DESC = `Shell kind or absolute executable path. Kinds: ${SHELL_KINDS.join(", ")}. On Windows, auto prefers pwsh \u2192 powershell \u2192 Git Bash \u2192 cmd.`;
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "exec",
-      description: "Run a one-shot shell command and return stdout/stderr/exitCode. cwd defaults to the user's home directory; the conversation workspace is not applied automatically, so pass an absolute cwd if you want a specific folder.",
+      description: "Run a one-shot shell command and return an agent-readable receipt (stdout/stderr sections) plus structured fields. Prefer shells tool before picking a Windows shell. cwd defaults to the user's home directory; pass an absolute cwd for a specific folder.",
       inputSchema: {
         type: "object",
         required: ["command"],
         properties: {
-          command: { type: "string", description: "Shell command to execute (run via the user's login shell)." },
+          command: { type: "string", description: "Shell command to execute." },
           cwd: { type: "string", description: `Absolute working directory (default: ${HOME}).` },
-          timeoutMs: { type: "number", description: "Optional timeout in milliseconds before the command is killed." }
+          timeoutMs: { type: "number", description: "Optional timeout in milliseconds before the command is killed." },
+          shell: { type: "string", description: SHELL_DESC }
         }
       }
     },
     {
+      name: "shells",
+      description: "List shells available on this host (bash, zsh, pwsh, powershell, cmd, wsl) with resolved paths and the auto default. Use before exec/open on Windows.",
+      inputSchema: { type: "object", properties: {} }
+    },
+    {
       name: "open",
-      description: "Open a new interactive terminal session (PTY) in the user's shell. cwd defaults to the user's home directory; the conversation workspace is not applied automatically, so pass an absolute cwd to open elsewhere.",
+      description: "Open a new interactive terminal session (PTY). Prefer shells tool to pick a Windows shell kind. cwd defaults to the user's home directory.",
       inputSchema: {
         type: "object",
         properties: {
-          shell: { type: "string", description: `Shell command (default: $SHELL or ${defaultShell()})` },
+          shell: { type: "string", description: SHELL_DESC },
           cwd: { type: "string", description: `Absolute working directory (default: ${HOME}).` },
           cols: { type: "number", description: "Columns (default: 120)" },
           rows: { type: "number", description: "Rows (default: 30)" }
@@ -15755,13 +16155,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "read",
-      description: "Read buffered output from a terminal session.",
+      description: "Read buffered output from a terminal session. Agent text strips ANSI by default; structured stdout keeps raw PTY bytes for the UI.",
       inputSchema: {
         type: "object",
         required: ["sessionId"],
         properties: {
           sessionId: { type: "string" },
-          clear: { type: "boolean", description: "Clear the buffer after reading (default: true)" }
+          clear: { type: "boolean", description: "Clear the buffer after reading (default: true)" },
+          stripAnsi: { type: "boolean", description: "Strip ANSI/OSC sequences in the agent text receipt (default: true)." }
         }
       }
     },
@@ -15798,10 +16199,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args = {} } = request.params;
   try {
     switch (name) {
+      case "shells": {
+        const listed = listAvailableShells();
+        return mcpToolResult(formatShellsText(listed), listed);
+      }
       case "exec": {
         const timeoutMs = Number.isFinite(args.timeoutMs) ? Math.max(0, Math.floor(args.timeoutMs)) : null;
-        const result = await runExec({ command: args.command, cwd: args.cwd, timeoutMs }, extra);
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        const result = await runExec({
+          command: args.command,
+          cwd: args.cwd,
+          timeoutMs,
+          shell: typeof args.shell === "string" ? args.shell : void 0
+        }, extra);
+        const stdoutText = stripAnsi(result.stdout);
+        const stderrText = stripAnsi(result.stderr);
+        const structured = {
+          stdout: stdoutText,
+          stderr: stderrText,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+          cwd: result.cwd,
+          shell: result.shell,
+          shellKind: result.shellKind,
+          durationMs: result.durationMs
+        };
+        const text = formatExecText({
+          ok: result.exitCode === 0 && !result.timedOut,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          shellKind: result.shellKind,
+          shell: result.shell,
+          cwd: result.cwd,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+          stdout: stdoutText,
+          stderr: stderrText,
+          durationMs: result.durationMs
+        });
+        return mcpToolResult(text, structured);
       }
       case "open": {
         const session = createSession({
@@ -15810,29 +16247,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           cols: args.cols,
           rows: args.rows
         });
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ sessionId: session.id, shell: session.shell, cwd: session.cwd, cols: session.cols, rows: session.rows })
-          }]
+        const structured = {
+          sessionId: session.id,
+          shell: session.shell,
+          shellKind: session.shellKind,
+          cwd: session.cwd,
+          cols: session.cols,
+          rows: session.rows
         };
+        return mcpToolResult(formatSessionOpenText(structured), structured);
       }
       case "write": {
         const session = getSession(args.sessionId);
         if (session.exited) throw new Error("Session has exited");
         session.term.write(String(args.data ?? ""));
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: session.id, written: true }),
+          { ok: true, sessionId: session.id }
+        );
       }
       case "read": {
         const session = getSession(args.sessionId);
         const clear = args.clear === void 0 ? true : Boolean(args.clear);
-        const { stdout, stderr } = drainBuffer(session, clear);
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({ stdout, stderr, exited: session.exited, exitCode: session.exitCode })
-          }]
+        const ansiStripped = args.stripAnsi === void 0 ? true : Boolean(args.stripAnsi);
+        const { stdout, truncated } = drainBuffer(session, clear);
+        const structured = {
+          stdout,
+          // raw PTY (ANSI) for UI
+          stderr: "",
+          exited: session.exited,
+          exitCode: session.exitCode,
+          truncated,
+          sessionId: session.id,
+          ansiStripped
         };
+        const text = formatPtyReadText({
+          sessionId: session.id,
+          exited: session.exited,
+          exitCode: session.exitCode,
+          truncated,
+          stdout,
+          ansiStripped
+        });
+        return mcpToolResult(text, structured);
       }
       case "resize": {
         const session = getSession(args.sessionId);
@@ -15841,23 +16298,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         session.cols = cols;
         session.rows = rows;
         if (!session.exited) session.term.resize(cols, rows);
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: session.id, cols, rows, resized: true }),
+          { ok: true, sessionId: session.id, cols, rows }
+        );
       }
       case "close": {
         const session = getSession(args.sessionId);
         if (!session.exited) {
           try {
             session.term.kill();
-          } catch (_) {
+          } catch {
           }
         }
         sessions.delete(args.sessionId);
-        return { content: [{ type: "text", text: "OK" }] };
+        return mcpToolResult(
+          formatOkText({ session_id: args.sessionId, closed: true }),
+          { ok: true, sessionId: args.sessionId }
+        );
       }
       case "list": {
         const list = Array.from(sessions.values()).map((session) => ({
           sessionId: session.id,
           shell: session.shell,
+          shellKind: session.shellKind,
           cwd: session.cwd,
           cols: session.cols,
           rows: session.rows,
@@ -15865,13 +16329,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           exited: session.exited,
           exitCode: session.exitCode
         }));
-        return { content: [{ type: "text", text: JSON.stringify(list, null, 2) }] };
+        const structured = { sessions: list, count: list.length };
+        const text = [
+          `ok=true`,
+          `count=${list.length}`,
+          "",
+          "session_id	shell	cwd	exited",
+          ...list.map((session) => `${session.sessionId}	${session.shellKind}	${session.cwd}	${session.exited}`),
+          ""
+        ].join("\n");
+        return mcpToolResult(text, structured);
       }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (err) {
-    return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+    return mcpToolResult(`Error: ${err.message}`, { ok: false, error: err.message }, { isError: true });
   }
 });
 async function main() {

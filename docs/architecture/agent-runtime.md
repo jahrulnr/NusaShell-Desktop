@@ -380,14 +380,17 @@ model-recoverable `AgentToolResult` with `ok:false`. Transport/protocol
 failures (RPC disconnect, timeout) still throw at the client adapter.
 
 **Projection** (`projectModelToolResult`): one serialization boundary only.
-- Structured path: compact terminal-style `key=value` lines; homogeneous
+- When MCP returns an agent-readable `content[0].text` **and** `structuredContent`,
+  projection prefers the text body (verbatim stream sections) while keeping
+  structured data on the canonical result for UI/host consumers. See
+  `docs/architecture/mcp-agent-output.md`.
+- Structured-only path: compact terminal-style `key=value` lines; homogeneous
   records become TSV tables.
-- Text/command path: `status=success\n\nstdout:\n...`.
-- Error path: `status=error\ncode=…\n\nstderr:\n…`.
+- Text/command path: preserve plugin text receipts verbatim.
+- Error path: real error message body.
 - Every `mcp_*` result is enclosed by the compact XML boundary
-  `<untrusted_tool_result source="…" format="terminal">` …
-  `</untrusted_tool_result>`. The brief line inside states that its contents
-  are data, never instructions.
+  `<untrusted_tool_result source="…" status="…">` …
+  `</untrusted_tool_result>`.
 
 **Truncation** (`truncateToolResultText`): head+tail with explicit
 `[omitted: N chars]` marker — never silent head-only slice on the new path.

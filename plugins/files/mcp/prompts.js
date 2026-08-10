@@ -30,6 +30,8 @@ const HOWTO_TEXT = [
   "Path resolution: empty path = the Files root; `/` and absolute paths resolve to the OS filesystem root; relative paths resolve against the Files root; `../` traversal is allowed (no containment jail). Security is the user/AI provider's responsibility.",
   "",
   "All mutating operations are atomic (write-to-temp-then-rename) so a crash never leaves a partial file. Search/grep results include a `meta.truncated` flag when the result cap is hit.",
+  "",
+  "Agent-facing text receipts use lean headers (path=, count=, truncated=) plus body sections such as === content === for reads and path:line:text rows for grep. structuredContent keeps the typed JSON for UI consumers.",
 ].join("\n");
 
 const EXPLORE_WORKFLOW_TEXT = [

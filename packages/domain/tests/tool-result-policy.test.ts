@@ -10,6 +10,7 @@ import {
   fromGatewayValue,
   fromThrownError,
   ingestMcpToolResult,
+  fromIngestedMcp,
   projectModelToolResult,
   truncateToolResultText,
 } from "../src/agent/tool-result-policy.js";
@@ -173,6 +174,31 @@ describe("AgentToolResult canonical model", () => {
     });
   });
 
+  // --- fromIngestedMcp ---
+
+  describe("fromIngestedMcp", () => {
+    it("keeps agent-readable text and structuredContent together", () => {
+      const ingested = ingestMcpToolResult({
+        content: [{ type: "text", text: "ok=true\n\n=== content ===\nhello\n" }],
+        structuredContent: { path: "a.txt", content: "hello" },
+      });
+      const result = fromIngestedMcp("call-1", "mcp_nusashell_files_read", ingested);
+      expect(result.status).toBe("success");
+      expect(result.content).toEqual([{ type: "text", text: "ok=true\n\n=== content ===\nhello\n" }]);
+      expect(result.structuredContent).toEqual({ path: "a.txt", content: "hello" });
+    });
+
+    it("falls back to structured-only when MCP text is absent", () => {
+      const ingested = ingestMcpToolResult({
+        content: [],
+        structuredContent: { path: "/a", content: "hi" },
+      });
+      const result = fromIngestedMcp("call-1", "mcp_nusashell_files_read", ingested);
+      expect(result.content).toEqual([{ type: "json", data: { path: "/a", content: "hi" } }]);
+      expect(result.structuredContent).toEqual({ path: "/a", content: "hi" });
+    });
+  });
+
   // --- projectModelToolResult ---
 
   describe("projectModelToolResult", () => {
@@ -199,6 +225,32 @@ describe("AgentToolResult canonical model", () => {
       expect(projected).toContain("path=/a");
       expect(projected).toContain("content=hi");
       expect(projected).toContain("</untrusted_tool_result>");
+    });
+
+    it("prefers agent-readable MCP text over structured projection when both exist", () => {
+      const result = fromIngestedMcp(
+        "call-1",
+        "mcp_nusashell_terminal_exec",
+        ingestMcpToolResult({
+          content: [{
+            type: "text",
+            text: "ok=true\nexit_code=0\n\n=== stdout ===\nhello\nworld\n=== stderr ===\n\n",
+          }],
+          structuredContent: {
+            stdout: "hello\nworld\n",
+            stderr: "",
+            exitCode: 0,
+          },
+        }),
+      );
+      const projected = projectModelToolResult(result);
+      expect(projected).toContain("=== stdout ===\nhello\nworld");
+      expect(projected).not.toContain("stdout=");
+      expect(result.structuredContent).toEqual({
+        stdout: "hello\nworld\n",
+        stderr: "",
+        exitCode: 0,
+      });
     });
 
     it("projects errors as stderr-style output", () => {

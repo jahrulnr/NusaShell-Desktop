@@ -27218,7 +27218,9 @@ var HOWTO_TEXT = [
   "",
   "Path resolution: empty path = the Files root; `/` and absolute paths resolve to the OS filesystem root; relative paths resolve against the Files root; `../` traversal is allowed (no containment jail). Security is the user/AI provider's responsibility.",
   "",
-  "All mutating operations are atomic (write-to-temp-then-rename) so a crash never leaves a partial file. Search/grep results include a `meta.truncated` flag when the result cap is hit."
+  "All mutating operations are atomic (write-to-temp-then-rename) so a crash never leaves a partial file. Search/grep results include a `meta.truncated` flag when the result cap is hit.",
+  "",
+  "Agent-facing text receipts use lean headers (path=, count=, truncated=) plus body sections such as === content === for reads and path:line:text rows for grep. structuredContent keeps the typed JSON for UI consumers."
 ].join("\n");
 var EXPLORE_WORKFLOW_TEXT = [
   "Recommended workflow for exploring and editing an unfamiliar codebase with the Files plugin:",
@@ -27249,6 +27251,213 @@ function getFilesPrompt(name) {
     };
   }
   throw new Error(`Unknown prompt: ${name}`);
+}
+
+// mcp/agent-output.js
+function formatSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)}K`;
+  return `${(n / (1024 * 1024)).toFixed(1)}M`;
+}
+function headerLines(fields) {
+  const lines = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === void 0) continue;
+    lines.push(`${key}=${value === null ? "" : String(value)}`);
+  }
+  return lines.join("\n");
+}
+function displayPath(value) {
+  if (value === void 0 || value === null || value === "") return ".";
+  return String(value);
+}
+function formatListText(result) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  const lines = [
+    headerLines({
+      ok: true,
+      path: displayPath(result.path),
+      count: items.length
+    }),
+    ""
+  ];
+  for (const item of items) {
+    if (item.isDir) {
+      lines.push(`d  ${item.name}/`);
+    } else {
+      lines.push(`f  ${item.name}  ${formatSize(item.size)}  ${item.type || "file"}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function appendTreeNodes(nodes, indent, lines) {
+  for (const node of nodes ?? []) {
+    const pad = "  ".repeat(indent);
+    if (node.isDir) {
+      lines.push(`${pad}${node.name}/`);
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        appendTreeNodes(node.children, indent + 1, lines);
+      }
+    } else {
+      lines.push(`${pad}${node.name}`);
+    }
+  }
+}
+function formatTreeText(result) {
+  const tree = Array.isArray(result.tree) ? result.tree : [];
+  const lines = [
+    headerLines({
+      ok: true,
+      path: displayPath(result.path),
+      depth: result.depth,
+      count: tree.length
+    }),
+    ""
+  ];
+  appendTreeNodes(tree, 0, lines);
+  lines.push("");
+  return lines.join("\n");
+}
+function formatReadText(result) {
+  const header = headerLines({
+    ok: true,
+    path: result.path,
+    lines: result.totalLines,
+    bytes: result.totalBytes,
+    truncated: Boolean(result.truncated)
+  });
+  return [
+    header,
+    "",
+    "=== content ===",
+    String(result.content ?? "").replace(/\s+$/u, ""),
+    ""
+  ].join("\n");
+}
+function formatGrepText(result) {
+  const results = Array.isArray(result.results) ? result.results : [];
+  const meta3 = result.meta ?? {};
+  const lines = [
+    headerLines({
+      ok: true,
+      path: displayPath(result.path),
+      pattern: result.pattern,
+      count: meta3.count ?? results.length,
+      truncated: Boolean(meta3.truncated)
+    }),
+    ""
+  ];
+  for (const hit of results) {
+    lines.push(`${hit.path}:${hit.line}:${hit.content ?? ""}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function formatSearchText(result) {
+  const results = Array.isArray(result.results) ? result.results : [];
+  const meta3 = result.meta ?? {};
+  const lines = [
+    headerLines({
+      ok: true,
+      path: displayPath(result.path),
+      pattern: result.pattern,
+      count: meta3.count ?? results.length,
+      truncated: Boolean(meta3.truncated)
+    }),
+    ""
+  ];
+  for (const hit of results) {
+    const kind = hit.isDir ? "dir " : "file";
+    lines.push(`${kind}  ${hit.path}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function formatExistsText(result) {
+  return `${headerLines({
+    ok: true,
+    path: result.path,
+    exists: Boolean(result.exists),
+    is_file: Boolean(result.isFile),
+    is_dir: Boolean(result.isDir)
+  })}
+`;
+}
+function formatMutationText(result) {
+  const fields = { ok: true };
+  for (const [key, value] of Object.entries(result ?? {})) {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      fields[key] = value;
+    }
+  }
+  return `${headerLines(fields)}
+`;
+}
+function formatGenericText(result) {
+  if (result === null || result === void 0) return "ok=true\n";
+  if (typeof result !== "object") return `ok=true
+value=${String(result)}
+`;
+  if (Array.isArray(result)) {
+    return `${headerLines({ ok: true, count: result.length })}
+${JSON.stringify(result, null, 2)}
+`;
+  }
+  const fields = { ok: true };
+  const complex = [];
+  for (const [key, value] of Object.entries(result)) {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      fields[key] = value;
+    } else {
+      complex.push([key, value]);
+    }
+  }
+  const lines = [headerLines(fields), ""];
+  for (const [key, value] of complex) {
+    lines.push(`=== ${key} ===`);
+    lines.push(typeof value === "string" ? value : JSON.stringify(value, null, 2));
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+function formatFilesToolText(toolName, result) {
+  switch (toolName) {
+    case "list":
+      return formatListText(result);
+    case "tree":
+      return formatTreeText(result);
+    case "read":
+      return formatReadText(result);
+    case "grep":
+      return formatGrepText(result);
+    case "search":
+      return formatSearchText(result);
+    case "exists":
+      return formatExistsText(result);
+    case "write":
+    case "mkdir":
+    case "move":
+    case "copy":
+    case "delete":
+    case "append":
+    case "touch":
+    case "info":
+      return formatMutationText(result);
+    case "patch":
+      return formatGenericText(result);
+    default:
+      return formatGenericText(result);
+  }
+}
+function mcpToolResult(text, structured, opts = {}) {
+  const payload = {
+    content: [{ type: "text", text: String(text) }],
+    structuredContent: structured
+  };
+  if (opts.isError) payload.isError = true;
+  return payload;
 }
 
 // mcp/server.js
@@ -27319,10 +27528,7 @@ async function main() {
         retrievalEngine
       );
       emitAutomationForTool(server, request.params.name, request.params.arguments ?? {});
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result
-      };
+      return mcpToolResult(formatFilesToolText(request.params.name, result), result);
     } catch (error51) {
       const safeError = safeFilesError(error51);
       process.stderr.write(

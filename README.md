@@ -212,7 +212,7 @@ the host process; does not vet MCP/AI behavior — see security boundary above)
 | [`docs/architecture/agent-skills-platform-technical-spec.md`](./docs/architecture/agent-skills-platform-technical-spec.md) | Full technical spec for a general-purpose agent skills platform (draft, larger than the shipped subset) |
 | [`docs/architecture/local-agent-skills.md`](./docs/architecture/local-agent-skills.md) | Current, shipped boundary of the local managed skills library and its read-only meta-tools |
 | [`docs/architecture/agent-memory.md`](./docs/architecture/agent-memory.md) | Persistent agent memory (MEMORY.md + USER.md), snapshot injection, and the `memory` meta-tool |
-| [`docs/architecture/mcp-capability-policy.md`](./docs/architecture/mcp-capability-policy.md) | Which MCP protocol capabilities NusaShell implements now vs. defers, and the adoption gate |
+| [`docs/architecture/mcp-agent-output.md`](./docs/architecture/mcp-agent-output.md) | Agent-readable text receipts + structuredContent for Files/Terminal; Windows shell kinds |
 | [`docs/architecture/progressive-mcp-tools.md`](./docs/architecture/progressive-mcp-tools.md) | Shell-owned meta-tools used to keep MCP tool discovery bounded per agent turn |
 | [`docs/architecture/job-automation.md`](./docs/architecture/job-automation.md) | Scheduled durable jobs (one-shot/recurring) that fire headless agent turns or plugin tool calls |
 | [`docs/architecture/token-telemetry.md`](./docs/architecture/token-telemetry.md) | Metadata-first token-efficiency telemetry: per-request + per-turn JSONL, `traceId` correlation, local report script |
