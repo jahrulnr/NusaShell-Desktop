@@ -128,6 +128,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install terminal plugin dependencies
+        # plugins/ is a submodule with its own npm install. node-pty must be
+        # present so stage-terminal-native.ts can stage it for packaging.
+        working-directory: plugins/terminal
+        run: npm install
+
       - name: Build workspace
         run: pnpm build
 

@@ -8,9 +8,14 @@
  * node-pty must be staged into plugins/terminal/node_modules/ before Forge
  * runs.
  *
+ * Since plugins/ became a git submodule with its own npm install, node-pty
+ * lives in plugins/terminal/node_modules/ after `npm install` there. This
+ * script resolves it from the plugin dir first, then falls back to the
+ * workspace root for the legacy hoisted layout.
+ *
  * This script:
- * 1. Resolves node-pty from the workspace node_modules
- * 2. Copies it into plugins/terminal/node_modules/node-pty
+ * 1. Resolves node-pty from the plugin dir or workspace node_modules
+ * 2. Copies it into plugins/terminal/node_modules/node-pty (if not present)
  * 3. Runs electron-rebuild on it so the .node binary matches the Electron ABI
  *
  * Usage: node --experimental-strip-types scripts/stage-terminal-native.ts
@@ -28,10 +33,19 @@ const workspaceRoot = resolve(__dirname, "../../..");
 const pluginDir = join(workspaceRoot, "plugins", "terminal");
 const targetDir = join(pluginDir, "node_modules", "node-pty");
 
+function resolveNodePty(): string {
+  // Try the plugin dir first (submodule with its own npm install)
+  try {
+    const pluginRequire = createRequire(join(pluginDir, "package.json"));
+    return dirname(pluginRequire.resolve("node-pty/package.json"));
+  } catch {}
+  // Fall back to the workspace root (legacy hoisted layout)
+  const workspaceRequire = createRequire(join(workspaceRoot, "package.json"));
+  return dirname(workspaceRequire.resolve("node-pty/package.json"));
+}
+
 async function main(): Promise<void> {
-  // Resolve node-pty from the workspace root
-  const require = createRequire(join(workspaceRoot, "package.json"));
-  const nodePtyPath = dirname(require.resolve("node-pty/package.json"));
+  const nodePtyPath = resolveNodePty();
   console.log(`[stage-terminal-native] resolved node-pty from ${nodePtyPath}`);
 
   // Check if already staged (idempotent)
