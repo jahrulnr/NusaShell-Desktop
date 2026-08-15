@@ -167,6 +167,33 @@ describe("AgentConversationController — ask-question cards", () => {
     expect(card.querySelector(".agent-ask-custom")?.classList.contains("is-active")).toBe(false);
     expect(card.querySelector(".agent-ask-answer")?.textContent).toBe("Answer: As a JSON snapshot field");
   });
+
+  // BH-ASK-02: when the turn ends without the ask being answered (stream gap,
+  // late open), the fallback sealer must disable the card's buttons and show an
+  // error message instead of leaving an interactive card the user can still
+  // click (which would then error with "No pending ask question").
+  it("sealStreamingToolCardsIncomplete disables ask card buttons and shows an error", () => {
+    const controller = new AgentConversationController({} as never);
+    const card = controller.createAskCard("call-ask", {
+      question: "Pick a path",
+      options: [{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }],
+      allow_free_text: true,
+    }, { sealed: false });
+
+    const streamState = { toolCards: new Map([["call-ask", card]]) };
+    controller.sealStreamingToolCardsIncomplete(streamState);
+
+    expect(card.classList.contains("is-sealed")).toBe(true);
+    expect(card.classList.contains("is-error")).toBe(true);
+    // Buttons must be disabled so the user cannot submit a stale answer.
+    const buttons = card.querySelectorAll("button");
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const btn of buttons) expect(btn.disabled).toBe(true);
+    // An error message must be visible.
+    const answer = card.querySelector(".agent-ask-answer");
+    expect(answer).not.toBeNull();
+    expect(answer?.textContent).toMatch(/stopped|ended|incomplete|cancelled/i);
+  });
 });
 
 describe("AgentConversationController — conversation-scoped composer state", () => {

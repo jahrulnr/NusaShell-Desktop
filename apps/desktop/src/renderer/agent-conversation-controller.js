@@ -4879,6 +4879,15 @@ export class AgentConversationController {
         if (!card.classList.contains("is-sealed")) {
           card.classList.remove("is-pending", "is-submitting");
           card.classList.add("is-sealed", "is-error");
+          // BH-ASK-02: disable interactive controls so the user cannot submit a
+          // stale answer (the pending entry is gone after turn end/cancel).
+          card.querySelectorAll("button, textarea").forEach((node) => { node.disabled = true; });
+          let answerEl = card.querySelector(".agent-ask-answer");
+          if (!answerEl) {
+            answerEl = element("div", "agent-ask-answer");
+            card.querySelector(".agent-ask-body")?.appendChild(answerEl);
+          }
+          answerEl.textContent = "Ask question was not answered (turn stopped).";
         }
         continue;
       }
@@ -5131,9 +5140,18 @@ export class AgentConversationController {
       send.addEventListener("click", () => void this.submitAskCard(card, selected));
       actions.append(
         send,
-        element("span", "agent-ask-dismiss-hint", "Esc / Stop to dismiss"),
+        element("span", "agent-ask-dismiss-hint", "Esc or Stop to cancel the turn"),
       );
       body.appendChild(actions);
+      // BH-ASK-03: honor the dismiss hint — Esc cancels the turn (which
+      // rejects the pending ask and unblocks the tool call).
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !card.classList.contains("is-sealed")) {
+          event.preventDefault();
+          void this.stop();
+        }
+      });
+      card.tabIndex = 0;
       this.syncAskSendState(card, selected);
     }
 

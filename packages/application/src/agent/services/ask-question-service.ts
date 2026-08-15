@@ -97,7 +97,18 @@ export class AskQuestionService {
     if (!pending) {
       throw new ApplicationError("AGENT_INVALID_INPUT", `No pending ask question for call ${callId}`, { callId, turnId });
     }
-    const result = buildResult(pending.request, answer);
+    // BH-ASK-01: buildResult() can throw on invalid input (unknown option id,
+    // empty free text, free text not allowed, multi-select violation). Delete
+    // the pending entry and reject the tool promise first so an invalid answer
+    // fails the turn cleanly instead of leaving the tool call hanging forever.
+    let result: AskQuestionResult;
+    try {
+      result = buildResult(pending.request, answer);
+    } catch (error) {
+      this.pending.delete(key);
+      pending.reject(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
     this.pending.delete(key);
     pending.resolve(result);
     return result;
