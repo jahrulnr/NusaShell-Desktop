@@ -7,9 +7,29 @@ const limit = z.number().int().min(1).max(50).default(30);
 const messageCursor = z.string().regex(/^\d+$/).optional();
 const unifiedCursor = z.string().max(4096).regex(/^[A-Za-z0-9_-]+$/).optional();
 
+const serverInput = z.object({
+  host: z.string().trim().min(1).max(253),
+  port: z.number().int().min(1).max(65535),
+  secure: z.boolean().default(true),
+  starttls: z.boolean().default(false),
+}).strict();
+
+const accountSaveInput = z.object({
+  id: accountId,
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(320),
+  username: z.string().min(1).max(320),
+  password: z.string().min(1).max(4096),
+  enabled: z.boolean().default(true),
+  imap: serverInput,
+  smtp: serverInput,
+}).strict();
+
 const schemas = {
   accounts: z.object({}).strict(),
   account_get: z.object({ account_id: accountId }).strict(),
+  account_save: accountSaveInput,
+  account_delete: z.object({ account_id: accountId }).strict(),
   account_test: z.object({
     account_id: accountId,
     scope: z.enum(["incoming", "outgoing", "both"]).default("both"),
@@ -46,6 +66,19 @@ export const MAIL_TOOLS = Object.freeze([
   descriptor("accounts", "List configured mail accounts without returning credentials.", {}),
   descriptor("account_get", "Read one account's non-secret configuration and capabilities.", {
     account_id: stringProperty("Account identifier from accounts"),
+  }, ["account_id"]),
+  writeDescriptor("account_save", "Create or update a mail account with IMAP and SMTP credentials.", {
+    id: stringProperty("Account identifier (lowercase, alphanumeric, dots, dashes, underscores)"),
+    name: stringProperty("Display name for this account"),
+    email: stringProperty("Email address for this account"),
+    username: stringProperty("Login username (often the email address)"),
+    password: stringProperty("Account password or app password"),
+    enabled: { type: "boolean", default: true },
+    imap: serverProperty("Incoming IMAP server"),
+    smtp: serverProperty("Outgoing SMTP server"),
+  }, ["id", "name", "email", "username", "password", "imap", "smtp"]),
+  writeDescriptor("account_delete", "Delete a mail account and close its connections.", {
+    account_id: stringProperty("Account identifier to remove"),
   }, ["account_id"]),
   descriptor("account_test", "Test incoming and outgoing connectivity for one configured account.", {
     account_id: stringProperty("Account identifier from accounts"),
@@ -107,6 +140,10 @@ export async function callMailTool(service, name, rawArguments = {}) {
       return { accounts: service.listAccounts() };
     case "account_get":
       return { account: service.getAccount(input.account_id) };
+    case "account_save":
+      return { account: service.saveAccount(input) };
+    case "account_delete":
+      return { accounts: service.deleteAccount(input.account_id) };
     case "account_test": {
       return service.testAccount(input.account_id, input.scope);
     }
@@ -288,6 +325,42 @@ function descriptor(name, description, properties, required = []) {
       required,
       additionalProperties: false,
     },
+  };
+}
+
+function writeDescriptor(name, description, properties, required = []) {
+  const isDestructive = name === "account_delete";
+  return {
+    name,
+    description,
+    annotations: {
+      title: name,
+      readOnlyHint: false,
+      destructiveHint: isDestructive,
+      idempotentHint: !isDestructive,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties,
+      required,
+      additionalProperties: false,
+    },
+  };
+}
+
+function serverProperty(description) {
+  return {
+    type: "object",
+    description,
+    properties: {
+      host: { type: "string", description: "Server hostname" },
+      port: { type: "integer", minimum: 1, maximum: 65535 },
+      secure: { type: "boolean", default: true, description: "Use implicit TLS" },
+      starttls: { type: "boolean", default: false, description: "Upgrade plain connection to TLS" },
+    },
+    required: ["host", "port"],
+    additionalProperties: false,
   };
 }
 

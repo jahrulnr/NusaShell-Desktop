@@ -25,7 +25,7 @@ import { flattenModelCatalog } from "./ai-provider-registry.js";
 import { AgentConversationStore } from "./agent-conversation-store.js";
 import { buildAssistantMessage, buildInterruptedMessage, buildSteeredInterruptedTranscript, buildSteeredTranscript } from "../shared/agent-message-builder.js";
 import type { AgentRuntimeHydration } from "../shared/agent-conversation-contract.js";
-import { MailSettingsStore } from "./mail-settings.js";
+import { migrateMailCredentials } from "./migrate-mail-credentials.js";
 import {
   AppBehaviorStore,
   shouldHideOnClose,
@@ -41,7 +41,6 @@ import {
   registerSkillsIpc,
   registerAiIpc,
   registerAgentIpc,
-  registerMailIpc,
   registerPluginsIpc,
   registerNativeMcpIpc,
   registerShellIpc,
@@ -54,7 +53,6 @@ let updater: AppUpdater | null = null;
 let aiSettingsStore: AiSettingsStore | null = null;
 let aiSettings: AiRegistrySettings | null = null;
 let agentConversationStore: AgentConversationStore | null = null;
-let mailSettingsStore: MailSettingsStore | null = null;
 let acpProviderStore: AcpProviderStore | null = null;
 let appBehaviorStore: AppBehaviorStore | null = null;
 let appBehavior: AppBehaviorSettings | null = null;
@@ -67,7 +65,6 @@ const logTail = new LogTail(1000);
 const shellLogLevels = new Set<ShellLogLevel>(["debug", "info", "warn", "error"]);
 const aiRuntimeConfig = loadConfig().ai;
 const aiStubEnabled = app.isPackaged ? false : aiRuntimeConfig.stubEnabled;
-const MAIL_PLUGIN_ID = "nusashell.mail";
 
 // WS port is still resolved for config compatibility (AppConfig.port), but
 // the server is no longer started in the desktop product path (Phase 3).
@@ -162,11 +159,19 @@ async function startBackend(): Promise<BootstrapResult> {
   const skillsRoot = resolve(dataRoot, "skills");
   const memoryRoot = resolve(dataRoot, "memories");
   const jobsRoot = resolve(dataRoot, "agent", "jobs");
-  const mailSettingsPath = resolve(dataRoot, "plugins-data", "nusashell.mail", "mail-settings.json");
-  const legacyMailSettingsPath = resolve(dataRoot, "mail-settings.json");
-  mailSettingsStore ??= new MailSettingsStore(mailSettingsPath);
-  await mailSettingsStore.migrateFrom(legacyMailSettingsPath);
-  await mailSettingsStore.load();
+
+  // One-time migration: decrypt legacy safeStorage mail credentials and
+  // write them to the plugin-managed store. Temporary — remove after one
+  // release cycle once existing users have migrated.
+  const mailStoreDir = resolve(dataRoot, "plugins-data", "nusashell.mail");
+  await migrateMailCredentials(
+    resolve(mailStoreDir, "mail-settings.json"),
+    resolve(mailStoreDir, "accounts.dat"),
+  );
+  await migrateMailCredentials(
+    resolve(dataRoot, "mail-settings.json"),
+    resolve(mailStoreDir, "accounts.dat"),
+  );
 
   const dbPath = process.env.NUSASHELL_DB_PATH || undefined;
   aiSettingsStore = new AiSettingsStore(
@@ -189,9 +194,8 @@ async function startBackend(): Promise<BootstrapResult> {
     // Phase 3: desktop uses IPC, not the loopback WebSocket. Keep the WS
     // server off the product path so there is no listening TCP socket.
     startWsServer: false,
-    resolvePluginRuntimeEnvironment: (pluginId) => ({
+    resolvePluginRuntimeEnvironment: () => ({
       NUSASHELL_USER_DATA: dataRoot,
-      ...(pluginId === MAIL_PLUGIN_ID ? mailSettingsStore?.runtimeEnvironment() ?? {} : {}),
     }),
     config: { port: wsPort, host: "127.0.0.1", pluginsRoot, bundledPluginsRoot, userPluginsRoot, builtinSkillsRoot, dbPath, logLevel: isDev ? "debug" : "info", ai: {
       providerId: activeProvider?.id ?? (aiStubEnabled ? "stub" : ""),
@@ -396,7 +400,6 @@ function createIpcContext(): IpcContext {
     getAiSettingsStore: () => { if (!aiSettingsStore) throw new Error("AI settings are not ready"); return aiSettingsStore; },
     getAgentConversationStore: () => { if (!agentConversationStore) throw new Error("Agent conversations are not ready"); return agentConversationStore; },
     getAcpProviderStore: () => { if (!acpProviderStore) throw new Error("ACP provider store is not ready"); return acpProviderStore; },
-    getMailSettingsStore: () => { if (!mailSettingsStore) throw new Error("Mail settings are not ready"); return mailSettingsStore; },
     getAppBehaviorStore: () => { if (!appBehaviorStore) throw new Error("App behavior settings are not ready"); return appBehaviorStore; },
     getLoginAutostart: () => { if (!loginAutostart) throw new Error("Login autostart is not ready"); return loginAutostart; },
     getUpdater: () => updater,
@@ -501,7 +504,6 @@ app.whenReady().then(async () => {
   registerSkillsIpc(ctx);
   registerAiIpc(ctx);
   registerAgentIpc(ctx);
-  registerMailIpc(ctx);
   registerPluginsIpc(ctx);
   registerNativeMcpIpc(ctx);
   registerShellIpc(ctx);

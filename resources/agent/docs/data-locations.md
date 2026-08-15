@@ -33,14 +33,15 @@ Within the durable state root, the desktop app may create:
 | `ai-settings.json` | AI provider, model, and related settings |
 | `user-prompt.md` | User-supplied prompt additions |
 | `app-behavior.json` | Startup, close-to-tray, and related app behavior |
-| `mail-settings.json` | **Legacy / deprecated.** Former mail settings path at the state root; one-way migrated into `plugins-data/nusashell.mail/` on startup when present |
+| `mail-settings.json` | **Legacy / deprecated.** Former mail settings path at the state root; one-way migrated into `plugins-data/nusashell.mail/accounts.dat` on startup when present |
 | `logs/nusashell.log` | Main application log |
 | `agent/docs-index/` | Search index for the bundled agent documentation |
 | `skills/` | User-managed local skills |
 | `memories/` | Agent memory and user-profile data |
 | `plugins/` | Writable user-installed and in-app-agent-authored plugin folders |
 | `plugins-data/` | Plugin-owned durable data (Notes, Kanban, Mail, …) |
-| `plugins-data/nusashell.mail/mail-settings.json` | Mail plugin account settings (encrypted credentials at rest) |
+| `plugins-data/nusashell.mail/accounts.dat` | Mail plugin account store (base64-encoded, 0600 permissions) |
+| `plugins-data/nusashell.mail/mail-settings.json` | **Legacy / deprecated.** Former safeStorage-encrypted mail settings; migrated to `accounts.dat` on startup |
 | `agent/jobs/` | Scheduled jobs and pipeline definitions / run history |
 
 Plugin metadata is stored in SQLite when `NUSASHELL_DB_PATH` is configured by

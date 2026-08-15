@@ -4,7 +4,6 @@ import type { BootstrapResult } from "@nusashell/backend";
 import type { AiSettingsStore } from "../ai-settings.js";
 import type { AgentConversationStore } from "../agent-conversation-store.js";
 import type { AcpProviderStore } from "../acp-provider-store.js";
-import type { MailSettingsStore } from "../mail-settings.js";
 import type { AppBehaviorStore, AppBehaviorPatch, AppBehaviorSettings } from "../app-behavior-settings.js";
 import type { LoginAutostart } from "../login-autostart.js";
 import type { LogTail, ShellLogLevel } from "../log-tail.js";
@@ -25,7 +24,6 @@ export interface IpcContext {
   getAiSettingsStore(): AiSettingsStore;
   getAgentConversationStore(): AgentConversationStore;
   getAcpProviderStore(): AcpProviderStore;
-  getMailSettingsStore(): MailSettingsStore;
   getAppBehaviorStore(): AppBehaviorStore;
   getLoginAutostart(): LoginAutostart;
   getUpdater(): AppUpdater | null;

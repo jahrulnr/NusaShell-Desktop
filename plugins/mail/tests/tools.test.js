@@ -32,6 +32,8 @@ describe("Mail MCP tools", () => {
     expect(MAIL_TOOLS.map((tool) => tool.name)).toEqual([
       "accounts",
       "account_get",
+      "account_save",
+      "account_delete",
       "account_test",
       "mailboxes",
       "inbox",

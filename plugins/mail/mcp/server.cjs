@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path) {
-      let input = path;
+    function removeDotSegments(path2) {
+      let input = path2;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3478,8 +3478,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path && path !== "/" ? path : void 0;
+        const [path2, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6878,12 +6878,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs, exportName) {
+    function addFormats(ajv, list, fs2, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs[f]);
+        ajv.addFormat(f, fs2[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7154,8 +7154,8 @@ var require_req = __commonJS({
       if (req.originalUrl) {
         _req.url = req.originalUrl;
       } else {
-        const path = req.path;
-        _req.url = typeof path === "string" ? path : req.url ? req.url.path || req.url : void 0;
+        const path2 = req.path;
+        _req.url = typeof path2 === "string" ? path2 : req.url ? req.url.path || req.url : void 0;
       }
       if (req.query) {
         _req.query = req.query;
@@ -7320,14 +7320,14 @@ var require_redact = __commonJS({
       }
       return obj;
     }
-    function parsePath(path) {
+    function parsePath(path2) {
       const parts = [];
       let current = "";
       let inBrackets = false;
       let inQuotes = false;
       let quoteChar = "";
-      for (let i = 0; i < path.length; i++) {
-        const char = path[i];
+      for (let i = 0; i < path2.length; i++) {
+        const char = path2[i];
         if (!inBrackets && char === ".") {
           if (current) {
             parts.push(current);
@@ -7458,10 +7458,10 @@ var require_redact = __commonJS({
       return current;
     }
     function redactPaths(obj, paths, censor, remove = false) {
-      for (const path of paths) {
-        const parts = parsePath(path);
+      for (const path2 of paths) {
+        const parts = parsePath(path2);
         if (parts.includes("*")) {
-          redactWildcardPath(obj, parts, censor, path, remove);
+          redactWildcardPath(obj, parts, censor, path2, remove);
         } else {
           if (remove) {
             removeKey(obj, parts);
@@ -7546,8 +7546,8 @@ var require_redact = __commonJS({
           }
         } else {
           if (afterWildcard.includes("*")) {
-            const wrappedCensor = typeof censor === "function" ? (value, path) => {
-              const fullPath = [...pathArray.slice(0, pathLength), ...path];
+            const wrappedCensor = typeof censor === "function" ? (value, path2) => {
+              const fullPath = [...pathArray.slice(0, pathLength), ...path2];
               return censor(value, fullPath);
             } : censor;
             redactWildcardPath(current, afterWildcard, wrappedCensor, originalPath, remove);
@@ -7582,8 +7582,8 @@ var require_redact = __commonJS({
         return null;
       }
       const pathStructure = /* @__PURE__ */ new Map();
-      for (const path of pathsToClone) {
-        const parts = parsePath(path);
+      for (const path2 of pathsToClone) {
+        const parts = parsePath(path2);
         let current = pathStructure;
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i];
@@ -7635,24 +7635,24 @@ var require_redact = __commonJS({
       }
       return cloneSelectively(obj, pathStructure);
     }
-    function validatePath(path) {
-      if (typeof path !== "string") {
+    function validatePath(path2) {
+      if (typeof path2 !== "string") {
         throw new Error("Paths must be (non-empty) strings");
       }
-      if (path === "") {
+      if (path2 === "") {
         throw new Error("Invalid redaction path ()");
       }
-      if (path.includes("..")) {
-        throw new Error(`Invalid redaction path (${path})`);
+      if (path2.includes("..")) {
+        throw new Error(`Invalid redaction path (${path2})`);
       }
-      if (path.includes(",")) {
-        throw new Error(`Invalid redaction path (${path})`);
+      if (path2.includes(",")) {
+        throw new Error(`Invalid redaction path (${path2})`);
       }
       let bracketCount = 0;
       let inQuotes = false;
       let quoteChar = "";
-      for (let i = 0; i < path.length; i++) {
-        const char = path[i];
+      for (let i = 0; i < path2.length; i++) {
+        const char = path2[i];
         if ((char === '"' || char === "'") && bracketCount > 0) {
           if (!inQuotes) {
             inQuotes = true;
@@ -7666,20 +7666,20 @@ var require_redact = __commonJS({
         } else if (char === "]" && !inQuotes) {
           bracketCount--;
           if (bracketCount < 0) {
-            throw new Error(`Invalid redaction path (${path})`);
+            throw new Error(`Invalid redaction path (${path2})`);
           }
         }
       }
       if (bracketCount !== 0) {
-        throw new Error(`Invalid redaction path (${path})`);
+        throw new Error(`Invalid redaction path (${path2})`);
       }
     }
     function validatePaths(paths) {
       if (!Array.isArray(paths)) {
         throw new TypeError("paths must be an array");
       }
-      for (const path of paths) {
-        validatePath(path);
+      for (const path2 of paths) {
+        validatePath(path2);
       }
     }
     function slowRedact(options = {}) {
@@ -7847,8 +7847,8 @@ var require_redaction = __commonJS({
         if (shape[k] === null) {
           o[k] = (value) => topCensor(value, [k]);
         } else {
-          const wrappedCensor = typeof censor === "function" ? (value, path) => {
-            return censor(value, [k, ...path]);
+          const wrappedCensor = typeof censor === "function" ? (value, path2) => {
+            return censor(value, [k, ...path2]);
           } : censor;
           o[k] = Redact({
             paths: shape[k],
@@ -8066,10 +8066,10 @@ var require_atomic_sleep = __commonJS({
 var require_sonic_boom = __commonJS({
   "../../node_modules/sonic-boom/index.js"(exports2, module2) {
     "use strict";
-    var fs = require("fs");
+    var fs2 = require("fs");
     var EventEmitter = require("events");
     var inherits = require("util").inherits;
-    var path = require("path");
+    var path2 = require("path");
     var sleep = require_atomic_sleep();
     var assert2 = require("assert");
     var BUSY_WRITE_TIMEOUT = 100;
@@ -8123,20 +8123,20 @@ var require_sonic_boom = __commonJS({
       const mode = sonic.mode;
       if (sonic.sync) {
         try {
-          if (sonic.mkdir) fs.mkdirSync(path.dirname(file2), { recursive: true });
-          const fd = fs.openSync(file2, flags, mode);
+          if (sonic.mkdir) fs2.mkdirSync(path2.dirname(file2), { recursive: true });
+          const fd = fs2.openSync(file2, flags, mode);
           fileOpened(null, fd);
         } catch (err) {
           fileOpened(err);
           throw err;
         }
       } else if (sonic.mkdir) {
-        fs.mkdir(path.dirname(file2), { recursive: true }, (err) => {
+        fs2.mkdir(path2.dirname(file2), { recursive: true }, (err) => {
           if (err) return fileOpened(err);
-          fs.open(file2, flags, mode, fileOpened);
+          fs2.open(file2, flags, mode, fileOpened);
         });
       } else {
-        fs.open(file2, flags, mode, fileOpened);
+        fs2.open(file2, flags, mode, fileOpened);
       }
     }
     function SonicBoom(opts) {
@@ -8177,8 +8177,8 @@ var require_sonic_boom = __commonJS({
         this.flush = flushBuffer;
         this.flushSync = flushBufferSync;
         this._actualWrite = actualWriteBuffer;
-        fsWriteSync = () => fs.writeSync(this.fd, this._writingBuf);
-        fsWrite = () => fs.write(this.fd, this._writingBuf, this.release);
+        fsWriteSync = () => fs2.writeSync(this.fd, this._writingBuf);
+        fsWrite = () => fs2.write(this.fd, this._writingBuf, this.release);
       } else if (contentMode === void 0 || contentMode === kContentModeUtf8) {
         this._writingBuf = "";
         this.write = write;
@@ -8187,15 +8187,15 @@ var require_sonic_boom = __commonJS({
         this._actualWrite = actualWrite;
         fsWriteSync = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs.writeSync(this.fd, this._writingBuf);
+            return fs2.writeSync(this.fd, this._writingBuf);
           }
-          return fs.writeSync(this.fd, this._writingBuf, "utf8");
+          return fs2.writeSync(this.fd, this._writingBuf, "utf8");
         };
         fsWrite = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs.write(this.fd, this._writingBuf, this.release);
+            return fs2.write(this.fd, this._writingBuf, this.release);
           }
-          return fs.write(this.fd, this._writingBuf, "utf8", this.release);
+          return fs2.write(this.fd, this._writingBuf, "utf8", this.release);
         };
       } else {
         throw new Error(`SonicBoom supports "${kContentModeUtf8}" and "${kContentModeBuffer}", but passed ${contentMode}`);
@@ -8252,7 +8252,7 @@ var require_sonic_boom = __commonJS({
           }
         }
         if (this._fsync) {
-          fs.fsyncSync(this.fd);
+          fs2.fsyncSync(this.fd);
         }
         const len = this._len;
         if (this._reopening) {
@@ -8366,7 +8366,7 @@ var require_sonic_boom = __commonJS({
       const onDrain = () => {
         if (!this._fsync) {
           try {
-            fs.fsync(this.fd, (err) => {
+            fs2.fsync(this.fd, (err) => {
               this._flushPending = false;
               cb(err);
             });
@@ -8468,7 +8468,7 @@ var require_sonic_boom = __commonJS({
       const fd = this.fd;
       this.once("ready", () => {
         if (fd !== this.fd) {
-          fs.close(fd, (err) => {
+          fs2.close(fd, (err) => {
             if (err) {
               return this.emit("error", err);
             }
@@ -8517,7 +8517,7 @@ var require_sonic_boom = __commonJS({
           buf = this._bufs[0];
         }
         try {
-          const n = Buffer.isBuffer(buf) ? fs.writeSync(this.fd, buf) : fs.writeSync(this.fd, buf, "utf8");
+          const n = Buffer.isBuffer(buf) ? fs2.writeSync(this.fd, buf) : fs2.writeSync(this.fd, buf, "utf8");
           const releasedBufObj = releaseWritingBuf(buf, this._len, n);
           buf = releasedBufObj.writingBuf;
           this._len = releasedBufObj.len;
@@ -8533,7 +8533,7 @@ var require_sonic_boom = __commonJS({
         }
       }
       try {
-        fs.fsyncSync(this.fd);
+        fs2.fsyncSync(this.fd);
       } catch {
       }
     }
@@ -8554,7 +8554,7 @@ var require_sonic_boom = __commonJS({
           buf = mergeBuf(this._bufs[0], this._lens[0]);
         }
         try {
-          const n = fs.writeSync(this.fd, buf);
+          const n = fs2.writeSync(this.fd, buf);
           buf = buf.subarray(n);
           this._len = Math.max(this._len - n, 0);
           if (buf.length <= 0) {
@@ -8582,13 +8582,13 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : this._bufs.shift() || "";
       if (this.sync) {
         try {
-          const written = Buffer.isBuffer(this._writingBuf) ? fs.writeSync(this.fd, this._writingBuf) : fs.writeSync(this.fd, this._writingBuf, "utf8");
+          const written = Buffer.isBuffer(this._writingBuf) ? fs2.writeSync(this.fd, this._writingBuf) : fs2.writeSync(this.fd, this._writingBuf, "utf8");
           release(null, written);
         } catch (err) {
           release(err);
         }
       } else {
-        fs.write(this.fd, this._writingBuf, release);
+        fs2.write(this.fd, this._writingBuf, release);
       }
     }
     function actualWriteBuffer() {
@@ -8597,7 +8597,7 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : mergeBuf(this._bufs.shift(), this._lens.shift());
       if (this.sync) {
         try {
-          const written = fs.writeSync(this.fd, this._writingBuf);
+          const written = fs2.writeSync(this.fd, this._writingBuf);
           release(null, written);
         } catch (err) {
           release(err);
@@ -8606,7 +8606,7 @@ var require_sonic_boom = __commonJS({
         if (kCopyBuffer) {
           this._writingBuf = Buffer.from(this._writingBuf);
         }
-        fs.write(this.fd, this._writingBuf, release);
+        fs2.write(this.fd, this._writingBuf, release);
       }
     }
     function actualClose(sonic) {
@@ -8622,12 +8622,12 @@ var require_sonic_boom = __commonJS({
       sonic._lens = [];
       assert2(typeof sonic.fd === "number", `sonic.fd must be a number, got ${typeof sonic.fd}`);
       try {
-        fs.fsync(sonic.fd, closeWrapped);
+        fs2.fsync(sonic.fd, closeWrapped);
       } catch {
       }
       function closeWrapped() {
         if (sonic.fd !== 1 && sonic.fd !== 2) {
-          fs.close(sonic.fd, done);
+          fs2.close(sonic.fd, done);
         } else {
           done();
         }
@@ -9463,15 +9463,15 @@ var require_transport = __commonJS({
       if (!unquoted) {
         return false;
       }
-      let path = unquoted;
-      if (path.startsWith("file://")) {
+      let path2 = unquoted;
+      if (path2.startsWith("file://")) {
         try {
-          path = fileURLToPath(path);
+          path2 = fileURLToPath(path2);
         } catch {
           return false;
         }
       }
-      return isAbsolute(path) && !existsSync(path);
+      return isAbsolute(path2) && !existsSync(path2);
     }
     function stripQuotes(value) {
       const first = value[0];
@@ -10012,12 +10012,12 @@ var require_levels = __commonJS({
     function genLsCache(instance) {
       const formatter = instance[formattersSym].level;
       const { labels } = instance.levels;
-      const cache = {};
+      const cache2 = {};
       for (const label in labels) {
         const level = formatter(labels[label], Number(label));
-        cache[label] = JSON.stringify(level).slice(0, -1);
+        cache2[label] = JSON.stringify(level).slice(0, -1);
       }
-      instance[lsCacheSym] = cache;
+      instance[lsCacheSym] = cache2;
       return instance;
     }
     function isStandardLevel(level, useOnlyCustomLevels) {
@@ -11165,7 +11165,7 @@ var require_multistream = __commonJS({
 var require_pino = __commonJS({
   "../../node_modules/imapflow/node_modules/pino/pino.js"(exports2, module2) {
     "use strict";
-    var os = require("node:os");
+    var os2 = require("node:os");
     var stdSerializers = require_pino_std_serializers();
     var caller = require_caller();
     var redaction = require_redaction();
@@ -11212,7 +11212,7 @@ var require_pino = __commonJS({
     } = symbols;
     var { epochTime, nullTime } = time3;
     var { pid } = process;
-    var hostname3 = os.hostname();
+    var hostname3 = os2.hostname();
     var defaultErrorSerializer = stdSerializers.err;
     var defaultOptions = {
       level: "info",
@@ -15047,14 +15047,14 @@ var require_lib = __commonJS({
     module2.exports.encodings = null;
     module2.exports.defaultCharUnicode = "\uFFFD";
     module2.exports.defaultCharSingleByte = "?";
-    module2.exports.encode = function encode3(str, encoding, options) {
+    module2.exports.encode = function encode4(str, encoding, options) {
       str = "" + (str || "");
       var encoder = module2.exports.getEncoder(encoding, options);
       var res = encoder.write(str);
       var trail = encoder.end();
       return trail && trail.length > 0 ? Buffer2.concat([res, trail]) : res;
     };
-    module2.exports.decode = function decode3(buf, encoding, options) {
+    module2.exports.decode = function decode4(buf, encoding, options) {
       if (typeof buf === "string") {
         if (!module2.exports.skipDecodeWarning) {
           console.error("Iconv-lite warning: decode()-ing strings is deprecated. Refer to https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding");
@@ -31924,13 +31924,13 @@ var require_libbase64 = __commonJS({
     var { Buffer: Buffer2 } = require("node:buffer");
     var stream = require("node:stream");
     var Transform = stream.Transform;
-    function encode3(buffer) {
+    function encode4(buffer) {
       if (typeof buffer === "string") {
         buffer = Buffer2.from(buffer, "utf-8");
       }
       return buffer.toString("base64");
     }
-    function decode3(str) {
+    function decode4(str) {
       str = str || "";
       return Buffer2.from(str, "base64");
     }
@@ -32009,7 +32009,7 @@ var require_libbase64 = __commonJS({
         } else {
           this._remainingBytes = false;
         }
-        let b64 = this._curLine + encode3(chunk);
+        let b64 = this._curLine + encode4(chunk);
         if (this.options.lineLength) {
           b64 = this._getWrapped(b64);
           let lastLF = b64.lastIndexOf("\n");
@@ -32030,7 +32030,7 @@ var require_libbase64 = __commonJS({
       }
       _flush(done) {
         if (this._remainingBytes && this._remainingBytes.length) {
-          this._curLine += encode3(this._remainingBytes);
+          this._curLine += encode4(this._remainingBytes);
         }
         if (this._curLine) {
           this._curLine = this._getWrapped(this._curLine, true);
@@ -32066,7 +32066,7 @@ var require_libbase64 = __commonJS({
           b64 = b64.substr(0, b64.length - this._curLine.length);
         }
         if (b64) {
-          let buf = decode3(b64);
+          let buf = decode4(b64);
           this.outputBytes += buf.length;
           this.push(buf);
         }
@@ -32074,7 +32074,7 @@ var require_libbase64 = __commonJS({
       }
       _flush(done) {
         if (this._curLine) {
-          let buf = decode3(this._curLine);
+          let buf = decode4(this._curLine);
           this.outputBytes += buf.length;
           this.push(buf);
           this._curLine = "";
@@ -32083,8 +32083,8 @@ var require_libbase64 = __commonJS({
       }
     };
     module2.exports = {
-      encode: encode3,
-      decode: decode3,
+      encode: encode4,
+      decode: decode4,
       wrap,
       Encoder,
       Decoder
@@ -32099,7 +32099,7 @@ var require_libqp = __commonJS({
     var { Buffer: Buffer2 } = require("node:buffer");
     var stream = require("node:stream");
     var Transform = stream.Transform;
-    function encode3(buffer) {
+    function encode4(buffer) {
       if (typeof buffer === "string") {
         buffer = Buffer2.from(buffer, "utf-8");
       }
@@ -32128,7 +32128,7 @@ var require_libqp = __commonJS({
       }
       return result;
     }
-    function decode3(str) {
+    function decode4(str) {
       str = (str || "").toString().replace(/[\t ]+$/gm, "").replace(/\=(?:\r?\n|$)/g, "");
       let encodedBytesCount = (str.match(/\=[\da-fA-F]{2}/g) || []).length, bufferLength = str.length - encodedBytesCount * 2, chr, hex3, buffer = Buffer2.alloc(bufferLength), bufferPos = 0;
       for (let i = 0, len = str.length; i < len; i++) {
@@ -32234,7 +32234,7 @@ var require_libqp = __commonJS({
         }
         this.inputBytes += chunk.length;
         if (this.options.lineLength) {
-          qp = this._curLine + encode3(chunk);
+          qp = this._curLine + encode4(chunk);
           qp = wrap(qp, this.options.lineLength);
           qp = qp.replace(/(^|\n)([^\n]*)$/, (match, lineBreak, lastLine) => {
             this._curLine = lastLine;
@@ -32245,7 +32245,7 @@ var require_libqp = __commonJS({
             this.push(qp);
           }
         } else {
-          qp = encode3(chunk);
+          qp = encode4(chunk);
           this.outputBytes += qp.length;
           this.push(qp, "ascii");
         }
@@ -32282,7 +32282,7 @@ var require_libqp = __commonJS({
       }
       _flush(done) {
         if (this.inputBytes) {
-          let buf = decode3(Buffer2.concat(this.qpChunks, this.inputBytes).toString());
+          let buf = decode4(Buffer2.concat(this.qpChunks, this.inputBytes).toString());
           this.outputBytes += buf.length;
           this.push(buf);
         }
@@ -32290,8 +32290,8 @@ var require_libqp = __commonJS({
       }
     };
     module2.exports = {
-      encode: encode3,
-      decode: decode3,
+      encode: encode4,
+      decode: decode4,
       wrap,
       Encoder,
       Decoder
@@ -43235,15 +43235,15 @@ var require_tools2 = __commonJS({
        * @param {String} path - Mailbox path to encode
        * @returns {String} Encoded mailbox path
        */
-      encodePath(connection, path) {
-        path = (path || "").toString();
-        if (!connection.enabled.has("UTF8=ACCEPT") && !tools.isRev2Active(connection) && /[&\x00-\x08\x0b-\x0c\x0e-\x1f\u0080-\uffff]/.test(path)) {
+      encodePath(connection, path2) {
+        path2 = (path2 || "").toString();
+        if (!connection.enabled.has("UTF8=ACCEPT") && !tools.isRev2Active(connection) && /[&\x00-\x08\x0b-\x0c\x0e-\x1f\u0080-\uffff]/.test(path2)) {
           try {
-            path = iconv.encode(path, "utf-7-imap").toString();
+            path2 = iconv.encode(path2, "utf-7-imap").toString();
           } catch {
           }
         }
-        return path;
+        return path2;
       },
       /**
        * Decodes a mailbox path from modified UTF-7 if the server does not support UTF8=ACCEPT.
@@ -43252,15 +43252,15 @@ var require_tools2 = __commonJS({
        * @param {String} path - Mailbox path to decode
        * @returns {String} Decoded mailbox path
        */
-      decodePath(connection, path) {
-        path = (path || "").toString();
-        if (!connection.enabled.has("UTF8=ACCEPT") && !tools.isRev2Active(connection) && /[&]/.test(path)) {
+      decodePath(connection, path2) {
+        path2 = (path2 || "").toString();
+        if (!connection.enabled.has("UTF8=ACCEPT") && !tools.isRev2Active(connection) && /[&]/.test(path2)) {
           try {
-            path = iconv.decode(Buffer.from(path), "utf-7-imap").toString();
+            path2 = iconv.decode(Buffer.from(path2), "utf-7-imap").toString();
           } catch {
           }
         }
-        return path;
+        return path2;
       },
       /**
        * Normalizes a mailbox path by joining array segments with the namespace delimiter,
@@ -43271,17 +43271,17 @@ var require_tools2 = __commonJS({
        * @param {Boolean} [skipNamespace] - If true, skips prepending the namespace prefix
        * @returns {String} Normalized mailbox path
        */
-      normalizePath(connection, path, skipNamespace) {
-        if (Array.isArray(path)) {
-          path = path.join(connection.namespace && connection.namespace.delimiter || "");
+      normalizePath(connection, path2, skipNamespace) {
+        if (Array.isArray(path2)) {
+          path2 = path2.join(connection.namespace && connection.namespace.delimiter || "");
         }
-        if (path.toUpperCase() === "INBOX") {
+        if (path2.toUpperCase() === "INBOX") {
           return "INBOX";
         }
-        if (!skipNamespace && connection.namespace && connection.namespace.prefix && !path.startsWith(connection.namespace.prefix)) {
-          path = connection.namespace.prefix + path;
+        if (!skipNamespace && connection.namespace && connection.namespace.prefix && !path2.startsWith(connection.namespace.prefix)) {
+          path2 = connection.namespace.prefix + path2;
         }
-        return path;
+        return path2;
       },
       /**
        * Compares two mailbox paths for equality after normalization.
@@ -43608,14 +43608,14 @@ var require_tools2 = __commonJS({
           }
         }
         if (map2.emailId || map2.uid) {
-          let path = mailbox.path;
-          if (/[\u0080-\uffff]/.test(path)) {
+          let path2 = mailbox.path;
+          if (/[\u0080-\uffff]/.test(path2)) {
             try {
-              path = iconv.encode(path, "utf-7-imap").toString();
+              path2 = iconv.encode(path2, "utf-7-imap").toString();
             } catch {
             }
           }
-          map2.id = map2.emailId || createHash("md5").update([path, mailbox.uidValidity?.toString() || "", map2.uid.toString()].join(":")).digest("hex");
+          map2.id = map2.emailId || createHash("md5").update([path2, mailbox.uidValidity?.toString() || "", map2.uid.toString()].join(":")).digest("hex");
         }
         if (map2.flags) {
           let flagColor = tools.getFlagColor(map2.flags);
@@ -43781,16 +43781,16 @@ var require_tools2 = __commonJS({
        * @returns {Object} Parsed body structure tree with part numbers, types, parameters, and child nodes
        */
       parseBodystructure(entry) {
-        let walk = (node, path) => {
-          path = path || [];
+        let walk = (node, path2) => {
+          path2 = path2 || [];
           let curNode = {}, i = 0, part = 0;
-          if (path.length) {
-            curNode.part = path.join(".");
+          if (path2.length) {
+            curNode.part = path2.join(".");
           }
           if (Array.isArray(node[0])) {
             curNode.childNodes = [];
             while (Array.isArray(node[i])) {
-              curNode.childNodes.push(walk(node[i], path.concat(++part)));
+              curNode.childNodes.push(walk(node[i], path2.concat(++part)));
               i++;
             }
             curNode.type = "multipart/" + ((node[i++] || {}).value || "").toString().toLowerCase();
@@ -43833,7 +43833,7 @@ var require_tools2 = __commonJS({
                   // the encapsulated message shares the part number with its wrapper.
                   // Distinction is via suffixes: path.MIME = wrapper headers,
                   // path.HEADER = encapsulated message headers.
-                  walk(node[i], path)
+                  walk(node[i], path2)
                 ];
               }
               i++;
@@ -45642,14 +45642,14 @@ var require_select = __commonJS({
   "../../node_modules/imapflow/lib/commands/select.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path, options) => {
+    module2.exports = async (connection, path2, options) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
       options = options || {};
-      path = normalizePath(connection, path);
-      if (!connection.folders.has(path)) {
-        let folders = await connection.run("LIST", "", path);
+      path2 = normalizePath(connection, path2);
+      if (!connection.folders.has(path2)) {
+        let folders = await connection.run("LIST", "", path2);
         if (!folders) {
           throw new Error("Failed to fetch folders");
         }
@@ -45657,10 +45657,10 @@ var require_select = __commonJS({
           connection.folders.set(folder.path, folder);
         });
       }
-      let folderListData = connection.folders.has(path) ? connection.folders.get(path) : false;
+      let folderListData = connection.folders.has(path2) ? connection.folders.get(path2) : false;
       let response;
       try {
-        let map2 = { path };
+        let map2 = { path: path2 };
         if (folderListData) {
           ["delimiter", "specialUse", "subscribed", "listed"].forEach((key) => {
             if (folderListData[key]) {
@@ -45679,7 +45679,7 @@ var require_select = __commonJS({
           ]);
           map2.qresync = true;
         }
-        let encodedPath = encodePath(connection, path);
+        let encodedPath = encodePath(connection, path2);
         let selectCommand = {
           command: !options.readOnly ? "SELECT" : "EXAMINE",
           /* c8 ignore next */
@@ -45784,12 +45784,12 @@ var require_select = __commonJS({
             // since the client's last known state. Only received when QRESYNC was requested.
             // A dummy mailbox object is passed because the mailbox isn't officially open yet.
             VANISHED: async (untagged) => {
-              await connection.untaggedVanished(untagged, { path, uidNext: false, uidValidity: false });
+              await connection.untaggedVanished(untagged, { path: path2, uidNext: false, uidValidity: false });
             },
             // Untagged FETCH during SELECT/EXAMINE: only occurs with QRESYNC, delivering
             // updated flags for messages that changed since the client's last modseq.
             FETCH: async (untagged) => {
-              await connection.untaggedFetch(untagged, { path, uidNext: false, uidValidity: false });
+              await connection.untaggedFetch(untagged, { path: path2, uidNext: false, uidValidity: false });
             }
           }
         });
@@ -45802,13 +45802,13 @@ var require_select = __commonJS({
         }
         let currentMailbox = connection.mailbox;
         connection.mailbox = false;
-        if (currentMailbox && currentMailbox.path !== path) {
+        if (currentMailbox && currentMailbox.path !== path2) {
           connection.emit("mailboxClose", currentMailbox);
         }
         connection.mailbox = map2;
         connection.currentSelectCommand = selectCommand;
         connection.state = connection.states.SELECTED;
-        if (!currentMailbox || currentMailbox.path !== path) {
+        if (!currentMailbox || currentMailbox.path !== path2) {
           connection.emit("mailboxOpen", connection.mailbox);
         }
         response.next();
@@ -46020,17 +46020,17 @@ var require_create = __commonJS({
   "../../node_modules/imapflow/lib/commands/create.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, getStatusCode, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path) => {
+    module2.exports = async (connection, path2) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
-      path = normalizePath(connection, path);
+      path2 = normalizePath(connection, path2);
       let response;
       try {
         let map2 = {
-          path
+          path: path2
         };
-        response = await connection.exec("CREATE", [{ type: "ATOM", value: encodePath(connection, path) }]);
+        response = await connection.exec("CREATE", [{ type: "ATOM", value: encodePath(connection, path2) }]);
         let section = response.response.attributes && response.response.attributes[0] && response.response.attributes[0].section && response.response.attributes[0].section.length ? response.response.attributes[0].section : false;
         if (section) {
           let key;
@@ -46056,13 +46056,13 @@ var require_create = __commonJS({
         }
         map2.created = true;
         response.next();
-        await connection.run("SUBSCRIBE", path);
+        await connection.run("SUBSCRIBE", path2);
         return map2;
       } catch (err) {
         let errorCode = getStatusCode(err.response);
         if (errorCode === "ALREADYEXISTS") {
           return {
-            path,
+            path: path2,
             created: false
           };
         }
@@ -46079,20 +46079,20 @@ var require_delete = __commonJS({
   "../../node_modules/imapflow/lib/commands/delete.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path) => {
+    module2.exports = async (connection, path2) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
-      path = normalizePath(connection, path);
-      if (connection.state === connection.states.SELECTED && connection.mailbox.path === path) {
+      path2 = normalizePath(connection, path2);
+      if (connection.state === connection.states.SELECTED && connection.mailbox.path === path2) {
         await connection.run("CLOSE");
       }
       let response;
       try {
         let map2 = {
-          path
+          path: path2
         };
-        response = await connection.exec("DELETE", [{ type: "ATOM", value: encodePath(connection, path) }]);
+        response = await connection.exec("DELETE", [{ type: "ATOM", value: encodePath(connection, path2) }]);
         response.next();
         return map2;
       } catch (err) {
@@ -46109,23 +46109,23 @@ var require_rename = __commonJS({
   "../../node_modules/imapflow/lib/commands/rename.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path, newPath) => {
+    module2.exports = async (connection, path2, newPath) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
-      path = normalizePath(connection, path);
+      path2 = normalizePath(connection, path2);
       newPath = normalizePath(connection, newPath);
-      if (connection.state === connection.states.SELECTED && connection.mailbox.path === path) {
+      if (connection.state === connection.states.SELECTED && connection.mailbox.path === path2) {
         await connection.run("CLOSE");
       }
       let response;
       try {
         let map2 = {
-          path,
+          path: path2,
           newPath
         };
         response = await connection.exec("RENAME", [
-          { type: "ATOM", value: encodePath(connection, path) },
+          { type: "ATOM", value: encodePath(connection, path2) },
           { type: "ATOM", value: encodePath(connection, newPath) }
         ]);
         response.next();
@@ -46172,14 +46172,14 @@ var require_subscribe = __commonJS({
   "../../node_modules/imapflow/lib/commands/subscribe.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path) => {
+    module2.exports = async (connection, path2) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
-      path = normalizePath(connection, path);
+      path2 = normalizePath(connection, path2);
       let response;
       try {
-        response = await connection.exec("SUBSCRIBE", [{ type: "ATOM", value: encodePath(connection, path) }]);
+        response = await connection.exec("SUBSCRIBE", [{ type: "ATOM", value: encodePath(connection, path2) }]);
         response.next();
         return true;
       } catch (err) {
@@ -46196,14 +46196,14 @@ var require_unsubscribe = __commonJS({
   "../../node_modules/imapflow/lib/commands/unsubscribe.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path) => {
+    module2.exports = async (connection, path2) => {
       if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state)) {
         return;
       }
-      path = normalizePath(connection, path);
+      path2 = normalizePath(connection, path2);
       let response;
       try {
-        response = await connection.exec("UNSUBSCRIBE", [{ type: "ATOM", value: encodePath(connection, path) }]);
+        response = await connection.exec("UNSUBSCRIBE", [{ type: "ATOM", value: encodePath(connection, path2) }]);
         response.next();
         return true;
       } catch (err) {
@@ -46960,28 +46960,28 @@ var require_status = __commonJS({
   "../../node_modules/imapflow/lib/commands/status.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, buildStatusQueryAttributes, isRev2Active } = require_tools2();
-    module2.exports = async (connection, path, query) => {
-      if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state) || !path) {
+    module2.exports = async (connection, path2, query) => {
+      if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state) || !path2) {
         return false;
       }
-      path = normalizePath(connection, path);
-      let encodedPath = encodePath(connection, path);
+      path2 = normalizePath(connection, path2);
+      let encodedPath = encodePath(connection, path2);
       let attributes = [{ type: encodedPath.indexOf("&") >= 0 ? "STRING" : "ATOM", value: encodedPath }];
       let queryAttributes = buildStatusQueryAttributes(connection, query);
       let syntheticRecent = query && query.recent && isRev2Active(connection);
       if (!queryAttributes.length) {
-        return syntheticRecent ? { path, recent: 0 } : false;
+        return syntheticRecent ? { path: path2, recent: 0 } : false;
       }
       attributes.push(queryAttributes);
       let response;
       try {
-        let map2 = { path };
+        let map2 = { path: path2 };
         response = await connection.exec("STATUS", attributes, {
           untagged: {
             // STATUS response: * STATUS <mailbox> (<key> <value> <key> <value> ...)
             // Parsed as alternating key-value pairs (i % 2 pattern).
             STATUS: async (untagged) => {
-              let updateCurrent = connection.state === connection.states.SELECTED && path === connection.mailbox.path;
+              let updateCurrent = connection.state === connection.states.SELECTED && path2 === connection.mailbox.path;
               let list = untagged.attributes && Array.isArray(untagged.attributes[1]) ? untagged.attributes[1] : false;
               if (!list) {
                 return;
@@ -46994,7 +46994,7 @@ var require_status = __commonJS({
                     let prevCount = conn.mailbox.exists;
                     if (prevCount !== val) {
                       conn.mailbox.exists = val;
-                      conn.emit("exists", { path, count: val, prevCount });
+                      conn.emit("exists", { path: path2, count: val, prevCount });
                     }
                   }
                 },
@@ -47053,9 +47053,9 @@ var require_status = __commonJS({
         return map2;
       } catch (err) {
         if (err.responseStatus === "NO") {
-          let folders = await connection.run("LIST", "", path, { listOnly: true });
+          let folders = await connection.run("LIST", "", path2, { listOnly: true });
           if (folders && !folders.length) {
-            let error51 = new Error(`Mailbox doesn't exist: ${path}`);
+            let error51 = new Error(`Mailbox doesn't exist: ${path2}`);
             error51.code = "NotFound";
             error51.response = err;
             throw error51;
@@ -47194,15 +47194,15 @@ var require_quota = __commonJS({
   "../../node_modules/imapflow/lib/commands/quota.js"(exports2, module2) {
     "use strict";
     var { encodePath, normalizePath, enhanceCommandError } = require_tools2();
-    module2.exports = async (connection, path) => {
-      if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state) || !path) {
+    module2.exports = async (connection, path2) => {
+      if (![connection.states.AUTHENTICATED, connection.states.SELECTED].includes(connection.state) || !path2) {
         return;
       }
       if (!connection.capabilities.has("QUOTA")) {
         return false;
       }
-      path = normalizePath(connection, path);
-      let map2 = { path };
+      path2 = normalizePath(connection, path2);
+      let map2 = { path: path2 };
       let processQuotaResponse = (untagged) => {
         let attributes = untagged.attributes && untagged.attributes[1];
         if (!attributes || !attributes.length) {
@@ -47239,7 +47239,7 @@ var require_quota = __commonJS({
       let quotaFound = false;
       let response;
       try {
-        response = await connection.exec("GETQUOTAROOT", [{ type: "ATOM", value: encodePath(connection, path) }], {
+        response = await connection.exec("GETQUOTAROOT", [{ type: "ATOM", value: encodePath(connection, path2) }], {
           untagged: {
             // QUOTAROOT response tells us which quota root applies to this mailbox.
             // A mailbox may have zero or one quota root.
@@ -47382,15 +47382,15 @@ var require_idle = __commonJS({
       }
     }
     async function pollOnce(connection, session) {
-      let path = connection.mailbox && connection.mailbox.path;
+      let path2 = connection.mailbox && connection.mailbox.path;
       switch (connection.missingIdleCommand) {
         case "SELECT":
           connection.log.debug({ src: "c", msg: `Running SELECT to detect changes in folder`, cid: connection.id });
-          await connection.runInternal("SELECT", path, { readOnly: session.selectCommand.command === "EXAMINE" });
+          await connection.runInternal("SELECT", path2, { readOnly: session.selectCommand.command === "EXAMINE" });
           break;
         case "STATUS": {
           connection.log.debug({ src: "c", msg: `Running STATUS to detect changes in folder`, cid: connection.id });
-          let status = await connection.runInternal("STATUS", path, {
+          let status = await connection.runInternal("STATUS", path2, {
             messages: true,
             uidNext: true,
             uidValidity: true,
@@ -48998,12 +48998,12 @@ var require_imap_flow = __commonJS({
           this.emit("flags", updateEvent);
         }
       }
-      async ensureSelectedMailbox(path) {
-        if (!path) {
+      async ensureSelectedMailbox(path2) {
+        if (!path2) {
           return false;
         }
-        if (!this.mailbox || !comparePaths(this, this.mailbox.path, path)) {
-          return await this.mailboxOpen(path);
+        if (!this.mailbox || !comparePaths(this, this.mailbox.path, path2)) {
+          return await this.mailboxOpen(path2);
         }
         return true;
       }
@@ -49419,9 +49419,9 @@ var require_imap_flow = __commonJS({
        * let quota = await client.getQuota();
        * console.log(quota.storage.used, quota.storage.limit)
        */
-      async getQuota(path) {
-        path = path || "INBOX";
-        return await this.run("QUOTA", path);
+      async getQuota(path2) {
+        path2 = path2 || "INBOX";
+        return await this.run("QUOTA", path2);
       }
       /**
        * @typedef {Object} ListResponse
@@ -49531,8 +49531,8 @@ var require_imap_flow = __commonJS({
        * console.log(info.path);
        * // "INBOX.parent.child" // assumes "INBOX." as namespace prefix and "." as delimiter
        */
-      async mailboxCreate(path) {
-        return await this.run("CREATE", path);
+      async mailboxCreate(path2) {
+        return await this.run("CREATE", path2);
       }
       /**
        * @typedef {Object} MailboxRenameResponse
@@ -49553,8 +49553,8 @@ var require_imap_flow = __commonJS({
        * console.log(info.newPath);
        * // "INBOX.Important stuff ❗️" // assumes "INBOX." as namespace prefix
        */
-      async mailboxRename(path, newPath) {
-        return await this.run("RENAME", path, newPath);
+      async mailboxRename(path2, newPath) {
+        return await this.run("RENAME", path2, newPath);
       }
       /**
        * @typedef {Object} MailboxDeleteResponse
@@ -49573,8 +49573,8 @@ var require_imap_flow = __commonJS({
        * console.log(info.path);
        * // "INBOX.Important stuff ❗️" // assumes "INBOX." as namespace prefix
        */
-      async mailboxDelete(path) {
-        return await this.run("DELETE", path);
+      async mailboxDelete(path2) {
+        return await this.run("DELETE", path2);
       }
       /**
        * Subscribes to a mailbox
@@ -49585,8 +49585,8 @@ var require_imap_flow = __commonJS({
        * @example
        * await client.mailboxSubscribe('Important stuff ❗️');
        */
-      async mailboxSubscribe(path) {
-        return await this.run("SUBSCRIBE", path);
+      async mailboxSubscribe(path2) {
+        return await this.run("SUBSCRIBE", path2);
       }
       /**
        * Unsubscribes from a mailbox
@@ -49597,8 +49597,8 @@ var require_imap_flow = __commonJS({
        * @example
        * await client.mailboxUnsubscribe('Important stuff ❗️');
        */
-      async mailboxUnsubscribe(path) {
-        return await this.run("UNSUBSCRIBE", path);
+      async mailboxUnsubscribe(path2) {
+        return await this.run("UNSUBSCRIBE", path2);
       }
       /**
        * Opens a mailbox to access messages. You can perform message operations only against an opened mailbox.
@@ -49616,8 +49616,8 @@ var require_imap_flow = __commonJS({
        * console.log(mailbox.exists);
        * // 125
        */
-      async mailboxOpen(path, options) {
-        return await this.run("SELECT", path, options);
+      async mailboxOpen(path2, options) {
+        return await this.run("SELECT", path2, options);
       }
       /**
        * Closes a previously opened mailbox
@@ -49664,8 +49664,8 @@ var require_imap_flow = __commonJS({
        * console.log(status.unseen);
        * // 123
        */
-      async status(path, query) {
-        return await this.run("STATUS", path, query);
+      async status(path2, query) {
+        return await this.run("STATUS", path2, query);
       }
       /**
        * Starts listening for new or deleted messages from the currently opened mailbox. Only required if {@link ImapFlow#disableAutoIdle} is set to `true`
@@ -49919,8 +49919,8 @@ var require_imap_flow = __commonJS({
        * @example
        * await client.append('INBOX', rawMessageBuffer, ['\\Seen'], new Date(2000, 1, 1));
        */
-      async append(path, content, flags, idate) {
-        return await this.run("APPEND", path, content, flags, idate) || false;
+      async append(path2, content, flags, idate) {
+        return await this.run("APPEND", path2, content, flags, idate) || false;
       }
       /**
        * @typedef {Object} CopyResponseObject
@@ -50762,7 +50762,7 @@ var require_imap_flow = __commonJS({
               await new Promise((resolve2) => setImmediate(resolve2));
             }
             const lock = this.locks.shift();
-            const { resolve, reject, path, options, lockId } = lock;
+            const { resolve, reject, path: path2, options, lockId } = lock;
             if (lock.acquireTimer) {
               clearTimeout(lock.acquireTimer);
               lock.acquireTimer = null;
@@ -50778,7 +50778,7 @@ var require_imap_flow = __commonJS({
                 this.log.warn({
                   msg: "Mailbox lock held for a long time",
                   lockId: lock.lockId,
-                  path,
+                  path: path2,
                   heldFor: Date.now() - lock.heldAt,
                   /* c8 ignore next */
                   // the held-lock-warning diagnostic with a description set is a timing-dependent log detail
@@ -50814,52 +50814,52 @@ var require_imap_flow = __commonJS({
               }
             };
             if (!this.usable || !this.socket || this.socket.destroyed) {
-              this.log.trace({ msg: "Failed to acquire mailbox lock", path, lockId, idling: this.idling });
+              this.log.trace({ msg: "Failed to acquire mailbox lock", path: path2, lockId, idling: this.idling });
               let error51 = new Error("Connection not available");
               error51.code = "NoConnection";
               reject(error51);
               continue;
             }
-            if (this.mailbox && this.mailbox.path === path && !!this.mailbox.readOnly === !!options.readOnly) {
+            if (this.mailbox && this.mailbox.path === path2 && !!this.mailbox.readOnly === !!options.readOnly) {
               this.log.trace({
                 msg: "Mailbox lock acquired [existing]",
-                path,
+                path: path2,
                 lockId,
                 idling: this.idling,
                 ...options.description && { description: options.description }
               });
               this.currentLock = lock;
               armHeldTimer();
-              resolve({ path, release });
+              resolve({ path: path2, release });
               break;
             }
             try {
-              await this.mailboxOpen(path, options);
+              await this.mailboxOpen(path2, options);
               this.log.trace({
                 msg: "Mailbox lock acquired [selected]",
-                path,
+                path: path2,
                 lockId,
                 idling: this.idling,
                 ...options.description && { description: options.description }
               });
               this.currentLock = lock;
               armHeldTimer();
-              resolve({ path, release });
+              resolve({ path: path2, release });
               break;
             } catch (err) {
               if (err.responseStatus === "NO") {
                 try {
-                  let folders = await this.run("LIST", "", path, { listOnly: true });
+                  let folders = await this.run("LIST", "", path2, { listOnly: true });
                   if (!folders || !folders.length) {
                     err.mailboxMissing = true;
                   }
                 } catch (E) {
-                  this.log.trace({ msg: "Failed to verify failed mailbox", path, err: E });
+                  this.log.trace({ msg: "Failed to verify failed mailbox", path: path2, err: E });
                 }
               }
               this.log.trace({
                 msg: "Failed to acquire mailbox lock",
-                path,
+                path: path2,
                 lockId,
                 idling: this.idling,
                 ...options.description && { description: options.description },
@@ -50898,13 +50898,13 @@ var require_imap_flow = __commonJS({
        *   lock.release();
        * }
        */
-      getMailboxLock(path, options) {
+      getMailboxLock(path2, options) {
         options = options || {};
-        path = normalizePath(this, path);
+        path2 = normalizePath(this, path2);
         let lockId = ++this.lockCounter;
         this.log.trace({
           msg: "Requesting lock",
-          path,
+          path: path2,
           lockId,
           ...options.description && { description: options.description },
           activeLock: this.currentLock ? {
@@ -50913,7 +50913,7 @@ var require_imap_flow = __commonJS({
           } : null
         });
         let lockPromise = new Promise((resolve, reject) => {
-          let lockEntry = { resolve, reject, path, options, lockId };
+          let lockEntry = { resolve, reject, path: path2, options, lockId };
           this.locks.push(lockEntry);
           if (Number(options.acquireTimeout) > 0) {
             lockEntry.acquireTimer = setTimeout(() => {
@@ -51098,7 +51098,7 @@ var require_punycode = __commonJS({
       }
       return floor(k + (baseMinusTMin + 1) * delta / (delta + skew));
     };
-    var decode3 = function(input) {
+    var decode4 = function(input) {
       const output = [];
       const inputLength = input.length;
       let i = 0;
@@ -51149,7 +51149,7 @@ var require_punycode = __commonJS({
       }
       return String.fromCodePoint(...output);
     };
-    var encode3 = function(input) {
+    var encode4 = function(input) {
       const output = [];
       input = ucs2decode(input);
       const inputLength = input.length;
@@ -51208,12 +51208,12 @@ var require_punycode = __commonJS({
     };
     var toUnicode = function(input) {
       return mapDomain(input, function(string4) {
-        return regexPunycode.test(string4) ? decode3(string4.slice(4).toLowerCase()) : string4;
+        return regexPunycode.test(string4) ? decode4(string4.slice(4).toLowerCase()) : string4;
       });
     };
     var toASCII = function(input) {
       return mapDomain(input, function(string4) {
-        return regexNonASCII.test(string4) ? "xn--" + encode3(string4) : string4;
+        return regexNonASCII.test(string4) ? "xn--" + encode4(string4) : string4;
       });
     };
     var punycode = {
@@ -51234,8 +51234,8 @@ var require_punycode = __commonJS({
         decode: ucs2decode,
         encode: ucs2encode
       },
-      decode: decode3,
-      encode: encode3,
+      decode: decode4,
+      encode: encode4,
       toASCII,
       toUnicode
     };
@@ -51465,8 +51465,8 @@ var require_cookies = __commonJS({
         if (urlparts.hostname !== cookie.domain && (cookie.domain.charAt(0) !== "." || ("." + urlparts.hostname).substr(-cookie.domain.length) !== cookie.domain)) {
           return false;
         }
-        const path = this.getPath(urlparts.pathname);
-        if (path.substr(0, cookie.path.length) !== cookie.path) {
+        const path2 = this.getPath(urlparts.pathname);
+        if (path2.substr(0, cookie.path.length) !== cookie.path) {
           return false;
         }
         if (cookie.secure && urlparts.protocol !== "https:") {
@@ -51524,16 +51524,16 @@ var require_cookies = __commonJS({
        * @returns {String} Normalized path
        */
       getPath(pathname) {
-        let path = (pathname || "/").split("/");
-        path.pop();
-        path = path.join("/").trim();
-        if (path.charAt(0) !== "/") {
-          path = "/" + path;
+        let path2 = (pathname || "/").split("/");
+        path2.pop();
+        path2 = path2.join("/").trim();
+        if (path2.charAt(0) !== "/") {
+          path2 = "/" + path2;
         }
-        if (path.substr(-1) !== "/") {
-          path += "/";
+        if (path2.substr(-1) !== "/") {
+          path2 += "/";
         }
-        return path;
+        return path2;
       }
     };
     module2.exports = Cookies;
@@ -51892,12 +51892,12 @@ var require_shared = __commonJS({
     "use strict";
     var urllib = require_url();
     var util = require("util");
-    var fs = require("fs");
+    var fs2 = require("fs");
     var nmfetch = require_fetch2();
     var errors = require_errors2();
     var dns = require("dns");
     var net = require("net");
-    var os = require("os");
+    var os2 = require("os");
     var DNS_TTL = 5 * 60 * 1e3;
     var CACHE_CLEANUP_INTERVAL = 30 * 1e3;
     var MAX_CACHE_SIZE = 1e3;
@@ -51908,7 +51908,7 @@ var require_shared = __commonJS({
     };
     var networkInterfaces;
     try {
-      networkInterfaces = os.networkInterfaces();
+      networkInterfaces = os2.networkInterfaces();
     } catch (_err) {
     }
     module2.exports.networkInterfaces = networkInterfaces;
@@ -52320,7 +52320,7 @@ var require_shared = __commonJS({
               callback(err);
             });
           }
-          return resolveStream(fs.createReadStream(content.path), callback);
+          return resolveStream(fs2.createReadStream(content.path), callback);
         }
       }
       if (typeof data[key].content === "string" && !["utf8", "usascii", "ascii"].includes(encoding)) {
@@ -52433,7 +52433,7 @@ var require_shared = __commonJS({
 var require_mime_types = __commonJS({
   "../../node_modules/nodemailer/lib/mime-funcs/mime-types.js"(exports2, module2) {
     "use strict";
-    var path = require("path");
+    var path2 = require("path");
     var defaultMimeType = "application/octet-stream";
     var defaultExtension = "bin";
     var mimeTypes = /* @__PURE__ */ new Map([
@@ -54500,7 +54500,7 @@ var require_mime_types = __commonJS({
         if (!filename) {
           return defaultMimeType;
         }
-        const parsed = path.parse(filename);
+        const parsed = path2.parse(filename);
         const extension = (parsed.ext.substr(1) || parsed.name || "").split("?").shift().trim().toLowerCase();
         const value = extensions.has(extension) ? extensions.get(extension) : defaultMimeType;
         if (Array.isArray(value)) {
@@ -54538,7 +54538,7 @@ var require_base64 = __commonJS({
   "../../node_modules/nodemailer/lib/base64/index.js"(exports2, module2) {
     "use strict";
     var { Transform } = require("stream");
-    function encode3(buffer) {
+    function encode4(buffer) {
       if (typeof buffer === "string") {
         buffer = Buffer.from(buffer, "utf-8");
       }
@@ -54591,7 +54591,7 @@ var require_base64 = __commonJS({
         } else {
           this._remainingBytes = false;
         }
-        let b64 = this._curLine + encode3(chunk);
+        let b64 = this._curLine + encode4(chunk);
         if (this.options.lineLength) {
           b64 = wrap(b64, this.options.lineLength);
           const lastLF = b64.lastIndexOf("\n");
@@ -54613,7 +54613,7 @@ var require_base64 = __commonJS({
       }
       _flush(done) {
         if (this._remainingBytes && this._remainingBytes.length) {
-          this._curLine += encode3(this._remainingBytes);
+          this._curLine += encode4(this._remainingBytes);
         }
         if (this._curLine) {
           this._curLine = wrap(this._curLine, this.options.lineLength);
@@ -54625,7 +54625,7 @@ var require_base64 = __commonJS({
       }
     };
     module2.exports = {
-      encode: encode3,
+      encode: encode4,
       wrap,
       Encoder
     };
@@ -54649,7 +54649,7 @@ var require_qp = __commonJS({
       [62, 126]
       // >?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}
     ];
-    function encode3(buffer) {
+    function encode4(buffer) {
       if (typeof buffer === "string") {
         buffer = Buffer.from(buffer, "utf-8");
       }
@@ -54763,7 +54763,7 @@ var require_qp = __commonJS({
         }
         this.inputBytes += chunk.length;
         if (this.options.lineLength) {
-          qp = this._curLine + encode3(chunk);
+          qp = this._curLine + encode4(chunk);
           qp = wrap(qp, this.options.lineLength);
           qp = qp.replace(/(^|\n)([^\n]*)$/, (match, lineBreak, lastLine) => {
             this._curLine = lastLine;
@@ -54774,7 +54774,7 @@ var require_qp = __commonJS({
             this.push(qp);
           }
         } else {
-          qp = encode3(chunk);
+          qp = encode4(chunk);
           this.outputBytes += qp.length;
           this.push(qp, "ascii");
         }
@@ -54789,7 +54789,7 @@ var require_qp = __commonJS({
       }
     };
     module2.exports = {
-      encode: encode3,
+      encode: encode4,
       wrap,
       Encoder
     };
@@ -55694,7 +55694,7 @@ var require_mime_node2 = __commonJS({
   "../../node_modules/nodemailer/lib/mime-node/index.js"(exports2, module2) {
     "use strict";
     var crypto = require("crypto");
-    var fs = require("fs");
+    var fs2 = require("fs");
     var punycode = require_punycode();
     var { PassThrough } = require("stream");
     var shared = require_shared();
@@ -56416,7 +56416,7 @@ var require_mime_node2 = __commonJS({
             });
             return contentStream;
           }
-          return fs.createReadStream(content.path);
+          return fs2.createReadStream(content.path);
         }
         if (content && typeof content.href === "string") {
           if (this.disableUrlAccess) {
@@ -57487,8 +57487,8 @@ var require_dkim = __commonJS({
     var RelaxedBody = require_relaxed_body();
     var sign = require_sign();
     var { PassThrough } = require("stream");
-    var fs = require("fs");
-    var path = require("path");
+    var fs2 = require("fs");
+    var path2 = require("path");
     var crypto = require("crypto");
     var DKIM_ALGO = "sha256";
     var MAX_MESSAGE_SIZE = 2 * 1024 * 1024;
@@ -57502,7 +57502,7 @@ var require_dkim = __commonJS({
         this.chunks = [];
         this.chunklen = 0;
         this.readPos = 0;
-        this.cachePath = this.cacheDir ? path.join(this.cacheDir, "message." + Date.now() + "-" + crypto.randomBytes(14).toString("hex")) : false;
+        this.cachePath = this.cacheDir ? path2.join(this.cacheDir, "message." + Date.now() + "-" + crypto.randomBytes(14).toString("hex")) : false;
         this.cache = false;
         this.headers = false;
         this.bodyHash = false;
@@ -57522,10 +57522,10 @@ var require_dkim = __commonJS({
         if (!this.cache || !this.cachePath) {
           return;
         }
-        fs.unlink(this.cachePath, () => false);
+        fs2.unlink(this.cachePath, () => false);
       }
       createReadCache() {
-        this.cache = fs.createReadStream(this.cachePath);
+        this.cache = fs2.createReadStream(this.cachePath);
         this.cache.once("error", (err) => {
           this.cleanup();
           this.output.emit("error", err);
@@ -57581,7 +57581,7 @@ var require_dkim = __commonJS({
       }
       createWriteCache() {
         this.output.usingCache = true;
-        this.cache = fs.createWriteStream(this.cachePath);
+        this.cache = fs2.createWriteStream(this.cachePath);
         this.cache.once("error", (err) => {
           this.cleanup();
           this.relaxedBody.unpipe(this.cache);
@@ -58540,7 +58540,7 @@ var require_smtp_connection = __commonJS({
     var { EventEmitter } = require("events");
     var net = require("net");
     var tls = require("tls");
-    var os = require("os");
+    var os2 = require("os");
     var crypto = require("crypto");
     var DataStream = require_data_stream();
     var { PassThrough } = require("stream");
@@ -60016,7 +60016,7 @@ var require_smtp_connection = __commonJS({
       _getHostname() {
         let defaultHostname;
         try {
-          defaultHostname = os.hostname() || "";
+          defaultHostname = os2.hostname() || "";
         } catch (_err) {
           defaultHostname = "localhost";
         }
@@ -62915,7 +62915,7 @@ var require_punycode2 = __commonJS({
       }
       return floor(k + (baseMinusTMin + 1) * delta / (delta + skew));
     };
-    var decode3 = function(input) {
+    var decode4 = function(input) {
       const output = [];
       const inputLength = input.length;
       let i = 0;
@@ -62966,7 +62966,7 @@ var require_punycode2 = __commonJS({
       }
       return String.fromCodePoint(...output);
     };
-    var encode3 = function(input) {
+    var encode4 = function(input) {
       const output = [];
       input = ucs2decode(input);
       const inputLength = input.length;
@@ -63027,12 +63027,12 @@ var require_punycode2 = __commonJS({
     };
     var toUnicode = function(input) {
       return mapDomain(input, function(string4) {
-        return regexPunycode.test(string4) ? decode3(string4.slice(4).toLowerCase()) : string4;
+        return regexPunycode.test(string4) ? decode4(string4.slice(4).toLowerCase()) : string4;
       });
     };
     var toASCII = function(input) {
       return mapDomain(input, function(string4) {
-        return regexNonASCII.test(string4) ? "xn--" + encode3(string4) : string4;
+        return regexNonASCII.test(string4) ? "xn--" + encode4(string4) : string4;
       });
     };
     var punycode = {
@@ -63053,8 +63053,8 @@ var require_punycode2 = __commonJS({
         "decode": ucs2decode,
         "encode": ucs2encode
       },
-      "decode": decode3,
-      "encode": encode3,
+      "decode": decode4,
+      "encode": encode4,
       "toASCII": toASCII,
       "toUnicode": toUnicode
     };
@@ -67758,7 +67758,7 @@ var require_lib4 = __commonJS({
       EncodingMode2[EncodingMode2["Attribute"] = 3] = "Attribute";
       EncodingMode2[EncodingMode2["Text"] = 4] = "Text";
     })(EncodingMode = exports2.EncodingMode || (exports2.EncodingMode = {}));
-    function decode3(data, options) {
+    function decode4(data, options) {
       if (options === void 0) {
         options = EntityLevel.XML;
       }
@@ -67769,7 +67769,7 @@ var require_lib4 = __commonJS({
       }
       return (0, decode_js_1.decodeXML)(data);
     }
-    exports2.decode = decode3;
+    exports2.decode = decode4;
     function decodeStrict(data, options) {
       var _a3;
       if (options === void 0) {
@@ -67777,10 +67777,10 @@ var require_lib4 = __commonJS({
       }
       var opts = typeof options === "number" ? { level: options } : options;
       (_a3 = opts.mode) !== null && _a3 !== void 0 ? _a3 : opts.mode = decode_js_1.DecodingMode.Strict;
-      return decode3(data, opts);
+      return decode4(data, opts);
     }
     exports2.decodeStrict = decodeStrict;
-    function encode3(data, options) {
+    function encode4(data, options) {
       if (options === void 0) {
         options = EntityLevel.XML;
       }
@@ -67799,7 +67799,7 @@ var require_lib4 = __commonJS({
       }
       return (0, escape_js_1.encodeXML)(data);
     }
-    exports2.encode = encode3;
+    exports2.encode = encode4;
     var escape_js_2 = require_escape();
     Object.defineProperty(exports2, "encodeXML", { enumerable: true, get: function() {
       return escape_js_2.encodeXML;
@@ -68043,7 +68043,7 @@ var require_lib5 = __commonJS({
       var _a3;
       if (!attributes)
         return;
-      var encode3 = ((_a3 = opts.encodeEntities) !== null && _a3 !== void 0 ? _a3 : opts.decodeEntities) === false ? replaceQuotes : opts.xmlMode || opts.encodeEntities !== "utf8" ? entities_1.encodeXML : entities_1.escapeAttribute;
+      var encode4 = ((_a3 = opts.encodeEntities) !== null && _a3 !== void 0 ? _a3 : opts.decodeEntities) === false ? replaceQuotes : opts.xmlMode || opts.encodeEntities !== "utf8" ? entities_1.encodeXML : entities_1.escapeAttribute;
       return Object.keys(attributes).map(function(key) {
         var _a4, _b;
         var value = (_a4 = attributes[key]) !== null && _a4 !== void 0 ? _a4 : "";
@@ -68053,7 +68053,7 @@ var require_lib5 = __commonJS({
         if (!opts.emptyAttrs && !opts.xmlMode && value === "") {
           return key;
         }
-        return "".concat(key, '="').concat(encode3(value), '"');
+        return "".concat(key, '="').concat(encode4(value), '"');
       }).join(" ");
     }
     var singleTag = /* @__PURE__ */ new Set([
@@ -69444,8 +69444,8 @@ var require_html_to_text = __commonJS({
     function unicodeEscape(str) {
       return str.replace(/[\s\S]/g, (c) => "\\u" + c.charCodeAt().toString(16).padStart(4, "0"));
     }
-    function get(obj, path) {
-      for (const key of path) {
+    function get(obj, path2) {
+      for (const key of path2) {
         if (!obj) {
           return void 0;
         }
@@ -70646,8 +70646,8 @@ var require_html_to_text = __commonJS({
       const rbr = typeof brackets[1] === "string" ? brackets[1] : "]";
       return lbr + str + rbr;
     }
-    function pathRewrite(path, rewriter, baseUrl, metadata, elem) {
-      const modifiedPath = typeof rewriter === "function" ? rewriter(path, metadata, elem) : path;
+    function pathRewrite(path2, rewriter, baseUrl, metadata, elem) {
+      const modifiedPath = typeof rewriter === "function" ? rewriter(path2, metadata, elem) : path2;
       return modifiedPath[0] === "/" && baseUrl ? trimCharacterEnd(baseUrl, "/") + modifiedPath : modifiedPath;
     }
     function formatImage(elem, walk, builder, formatOptions) {
@@ -70971,9 +70971,9 @@ var require_html_to_text = __commonJS({
         options.selectors.push(...tagDefinitions);
         options.selectors = mergeDuplicatesPreferLast(options.selectors, ((s) => s.selector));
       }
-      function set2(obj, path, value) {
-        const valueKey = path.pop();
-        for (const key of path) {
+      function set2(obj, path2, value) {
+        const valueKey = path2.pop();
+        for (const key of path2) {
           let nested = obj[key];
           if (!nested) {
             nested = {};
@@ -71106,8 +71106,8 @@ var require_he = __commonJS({
       var parseError = function(message) {
         throw Error("Parse error: " + message);
       };
-      var encode3 = function(string4, options) {
-        options = merge2(options, encode3.options);
+      var encode4 = function(string4, options) {
+        options = merge2(options, encode4.options);
         var strict = options.strict;
         if (strict && regexInvalidRawCodePoint.test(string4)) {
           parseError("forbidden code point");
@@ -71154,15 +71154,15 @@ var require_he = __commonJS({
           return escapeCodePoint(codePoint);
         }).replace(regexBmpWhitelist, escapeBmpSymbol);
       };
-      encode3.options = {
+      encode4.options = {
         "allowUnsafeSymbols": false,
         "encodeEverything": false,
         "strict": false,
         "useNamedReferences": false,
         "decimal": false
       };
-      var decode3 = function(html, options) {
-        options = merge2(options, decode3.options);
+      var decode4 = function(html, options) {
+        options = merge2(options, decode4.options);
         var strict = options.strict;
         if (strict && regexInvalidEntity.test(html)) {
           parseError("malformed character reference");
@@ -71221,7 +71221,7 @@ var require_he = __commonJS({
           return $0;
         });
       };
-      decode3.options = {
+      decode4.options = {
         "isAttributeValue": false,
         "strict": false
       };
@@ -71232,10 +71232,10 @@ var require_he = __commonJS({
       };
       var he = {
         "version": "1.2.0",
-        "encode": encode3,
-        "decode": decode3,
+        "encode": encode4,
+        "decode": decode4,
         "escape": escape2,
-        "unescape": decode3
+        "unescape": decode4
       };
       if (typeof define == "function" && typeof define.amd == "object" && define.amd) {
         define(function() {
@@ -74797,10 +74797,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path) {
-  if (!path)
+function getElementAtPath(obj, path2) {
+  if (!path2)
     return obj;
-  return path.reduce((acc, key) => acc?.[key], obj);
+  return path2.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -75209,11 +75209,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path, issues) {
+function prefixIssues(path2, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path);
+    iss.path.unshift(path2);
     return iss;
   });
 }
@@ -75360,16 +75360,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path = []) => {
+  const processError = (error52, path2 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
       } else {
-        const fullpath = [...path, ...issue2.path];
+        const fullpath = [...path2, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -75396,17 +75396,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path = []) => {
+  const processError = (error52, path2 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
       } else {
-        const fullpath = [...path, ...issue2.path];
+        const fullpath = [...path2, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -75438,8 +75438,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path) {
+  const path2 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path2) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -88437,13 +88437,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path = ref.slice(1).split("/").filter(Boolean);
-  if (path.length === 0) {
+  const path2 = ref.slice(1).split("/").filter(Boolean);
+  if (path2.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path[0] === defsKey) {
-    const key = path[1];
+  if (path2[0] === defsKey) {
+    const key = path2[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -92150,6 +92150,11 @@ var StdioServerTransport = class {
   }
 };
 
+// mcp/account-store.js
+var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path = __toESM(require("node:path"), 1);
+var import_node_os = __toESM(require("node:os"), 1);
+
 // mcp/config.js
 var ServerSchema = external_exports.object({
   host: external_exports.string().trim().min(1).max(253),
@@ -92175,30 +92180,6 @@ var AccountSchema = external_exports.object({
   imap: ServerSchema,
   smtp: ServerSchema
 });
-var AccountsSchema = external_exports.array(AccountSchema).max(20);
-var MAX_CONFIG_BYTES = 256 * 1024;
-function loadAccountsFromEnvironment(environment = process.env) {
-  const raw = environment.NUSASHELL_MAIL_ACCOUNTS;
-  if (!raw) return [];
-  if (Buffer.byteLength(raw, "utf8") > MAX_CONFIG_BYTES) {
-    throw new Error("Mail account configuration exceeds the 256 KiB limit");
-  }
-  let input;
-  try {
-    input = JSON.parse(raw);
-  } catch {
-    throw new Error("Mail account configuration is not valid JSON");
-  }
-  const accounts2 = AccountsSchema.parse(input);
-  const seen = /* @__PURE__ */ new Set();
-  for (const account of accounts2) {
-    if (seen.has(account.id)) {
-      throw new Error(`Duplicate account id: ${account.id}`);
-    }
-    seen.add(account.id);
-  }
-  return accounts2;
-}
 function publicAccount(account) {
   return {
     id: account.id,
@@ -92231,6 +92212,100 @@ function resolveAccount(accounts2, accountId2) {
   return account;
 }
 
+// mcp/account-store.js
+var STORE_DIR_NAME = "plugins-data/nusashell.mail";
+var STORE_FILE_NAME = "accounts.dat";
+var MAX_STORE_BYTES = 256 * 1024;
+function resolveStoreDir(environment = process.env) {
+  const base = environment.NUSASHELL_USER_DATA || environment.NUSASHELL_DATA_DIR || import_node_path.default.join(import_node_os.default.homedir(), ".local", "share", "nusashell");
+  return import_node_path.default.join(base, STORE_DIR_NAME);
+}
+function resolveStorePath(environment = process.env) {
+  return import_node_path.default.join(resolveStoreDir(environment), STORE_FILE_NAME);
+}
+function encode3(data) {
+  return Buffer.from(JSON.stringify(data), "utf8").toString("base64");
+}
+function decode3(raw) {
+  return JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+}
+var cache = null;
+var cachePath = null;
+function readRaw(storePath) {
+  if (cache && cachePath === storePath) return cache;
+  if (!import_node_fs.default.existsSync(storePath)) {
+    cache = [];
+    cachePath = storePath;
+    return cache;
+  }
+  const raw = import_node_fs.default.readFileSync(storePath, "utf8").trim();
+  if (!raw) {
+    cache = [];
+    cachePath = storePath;
+    return cache;
+  }
+  if (Buffer.byteLength(raw, "utf8") > MAX_STORE_BYTES) {
+    throw new Error("Mail account store exceeds the 256 KiB limit");
+  }
+  let parsed;
+  try {
+    parsed = decode3(raw);
+  } catch {
+    throw new Error("Mail account store is not valid");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("Mail account store must contain an account array");
+  }
+  const accounts2 = parsed.map((value, index) => {
+    try {
+      return AccountSchema.parse(value);
+    } catch (error51) {
+      throw new Error(`Mail account record ${index + 1} is invalid`, { cause: error51 });
+    }
+  });
+  const seen = /* @__PURE__ */ new Set();
+  for (const account of accounts2) {
+    if (seen.has(account.id)) {
+      throw new Error(`Duplicate account id: ${account.id}`);
+    }
+    seen.add(account.id);
+  }
+  cache = accounts2;
+  cachePath = storePath;
+  return accounts2;
+}
+function writeRaw(storePath, accounts2) {
+  const dir = import_node_path.default.dirname(storePath);
+  import_node_fs.default.mkdirSync(dir, { recursive: true });
+  const tmp = `${storePath}.tmp`;
+  import_node_fs.default.writeFileSync(tmp, encode3(accounts2), { mode: 384 });
+  import_node_fs.default.renameSync(tmp, storePath);
+  cache = accounts2;
+  cachePath = storePath;
+}
+function loadAccounts(environment = process.env) {
+  return readRaw(resolveStorePath(environment));
+}
+function saveAccount(input, environment = process.env) {
+  const storePath = resolveStorePath(environment);
+  const accounts2 = [...readRaw(storePath)];
+  const parsed = AccountSchema.parse(input);
+  const existing = accounts2.find((account) => account.id === parsed.id);
+  const next = existing ? accounts2.map((account) => account.id === parsed.id ? parsed : account) : [...accounts2, parsed];
+  writeRaw(storePath, next);
+  return publicAccount(parsed);
+}
+function deleteAccount(accountId2, environment = process.env) {
+  const storePath = resolveStorePath(environment);
+  const accounts2 = readRaw(storePath);
+  const next = accounts2.filter((account) => account.id !== accountId2);
+  if (next.length === accounts2.length) {
+    throw new Error(`Mail account not found: ${accountId2}`);
+  }
+  writeRaw(storePath, next);
+  return next.map(publicAccount);
+}
+
 // mcp/connections.js
 var import_imapflow = __toESM(require_imap_flow(), 1);
 var import_nodemailer = __toESM(require_nodemailer(), 1);
@@ -92257,6 +92332,19 @@ var MailConnectionManager = class {
   constructor(accounts2) {
     this.accounts = accounts2;
     this.imapClients = /* @__PURE__ */ new Map();
+  }
+  reloadAccounts(accounts2) {
+    this.accounts = accounts2;
+  }
+  dropAccount(accountId2) {
+    const existing = this.imapClients.get(accountId2);
+    if (existing) {
+      this.imapClients.delete(accountId2);
+      try {
+        existing.close();
+      } catch {
+      }
+    }
   }
   async getImapClient(accountId2) {
     const existing = this.imapClients.get(accountId2);
@@ -92369,6 +92457,18 @@ var MailService = class {
   }
   getAccount(accountId2) {
     return publicAccount(resolveAccount(this.accounts, accountId2));
+  }
+  saveAccount(input) {
+    const saved = saveAccount(input);
+    this.accounts = loadAccounts();
+    this.connections.reloadAccounts(this.accounts);
+    return saved;
+  }
+  deleteAccount(accountId2) {
+    const remaining = deleteAccount(accountId2);
+    this.accounts = loadAccounts();
+    this.connections.dropAccount(accountId2);
+    return remaining;
   }
   testAccount(accountId2, scope = "both") {
     resolveAccount(this.accounts, accountId2);
@@ -92630,6 +92730,8 @@ function safeDate(value) {
 var MAIL_TOOL_NAMES = Object.freeze([
   "accounts",
   "account_get",
+  "account_save",
+  "account_delete",
   "account_test",
   "mailboxes",
   "inbox",
@@ -92644,9 +92746,27 @@ var mailboxId = external_exports.string().min(1).max(512).default("INBOX");
 var limit = external_exports.number().int().min(1).max(50).default(30);
 var messageCursor = external_exports.string().regex(/^\d+$/).optional();
 var unifiedCursor = external_exports.string().max(4096).regex(/^[A-Za-z0-9_-]+$/).optional();
+var serverInput = external_exports.object({
+  host: external_exports.string().trim().min(1).max(253),
+  port: external_exports.number().int().min(1).max(65535),
+  secure: external_exports.boolean().default(true),
+  starttls: external_exports.boolean().default(false)
+}).strict();
+var accountSaveInput = external_exports.object({
+  id: accountId,
+  name: external_exports.string().trim().min(1).max(120),
+  email: external_exports.string().trim().email().max(320),
+  username: external_exports.string().min(1).max(320),
+  password: external_exports.string().min(1).max(4096),
+  enabled: external_exports.boolean().default(true),
+  imap: serverInput,
+  smtp: serverInput
+}).strict();
 var schemas = {
   accounts: external_exports.object({}).strict(),
   account_get: external_exports.object({ account_id: accountId }).strict(),
+  account_save: accountSaveInput,
+  account_delete: external_exports.object({ account_id: accountId }).strict(),
   account_test: external_exports.object({
     account_id: accountId,
     scope: external_exports.enum(["incoming", "outgoing", "both"]).default("both")
@@ -92682,6 +92802,19 @@ var MAIL_TOOLS = Object.freeze([
   descriptor("accounts", "List configured mail accounts without returning credentials.", {}),
   descriptor("account_get", "Read one account's non-secret configuration and capabilities.", {
     account_id: stringProperty("Account identifier from accounts")
+  }, ["account_id"]),
+  writeDescriptor("account_save", "Create or update a mail account with IMAP and SMTP credentials.", {
+    id: stringProperty("Account identifier (lowercase, alphanumeric, dots, dashes, underscores)"),
+    name: stringProperty("Display name for this account"),
+    email: stringProperty("Email address for this account"),
+    username: stringProperty("Login username (often the email address)"),
+    password: stringProperty("Account password or app password"),
+    enabled: { type: "boolean", default: true },
+    imap: serverProperty("Incoming IMAP server"),
+    smtp: serverProperty("Outgoing SMTP server")
+  }, ["id", "name", "email", "username", "password", "imap", "smtp"]),
+  writeDescriptor("account_delete", "Delete a mail account and close its connections.", {
+    account_id: stringProperty("Account identifier to remove")
   }, ["account_id"]),
   descriptor("account_test", "Test incoming and outgoing connectivity for one configured account.", {
     account_id: stringProperty("Account identifier from accounts"),
@@ -92740,6 +92873,10 @@ async function callMailTool(service2, name, rawArguments = {}) {
       return { accounts: service2.listAccounts() };
     case "account_get":
       return { account: service2.getAccount(input.account_id) };
+    case "account_save":
+      return { account: service2.saveAccount(input) };
+    case "account_delete":
+      return { accounts: service2.deleteAccount(input.account_id) };
     case "account_test": {
       return service2.testAccount(input.account_id, input.scope);
     }
@@ -92907,6 +93044,40 @@ function descriptor(name, description, properties, required2 = []) {
     }
   };
 }
+function writeDescriptor(name, description, properties, required2 = []) {
+  const isDestructive = name === "account_delete";
+  return {
+    name,
+    description,
+    annotations: {
+      title: name,
+      readOnlyHint: false,
+      destructiveHint: isDestructive,
+      idempotentHint: !isDestructive,
+      openWorldHint: false
+    },
+    inputSchema: {
+      type: "object",
+      properties,
+      required: required2,
+      additionalProperties: false
+    }
+  };
+}
+function serverProperty(description) {
+  return {
+    type: "object",
+    description,
+    properties: {
+      host: { type: "string", description: "Server hostname" },
+      port: { type: "integer", minimum: 1, maximum: 65535 },
+      secure: { type: "boolean", default: true, description: "Use implicit TLS" },
+      starttls: { type: "boolean", default: false, description: "Upgrade plain connection to TLS" }
+    },
+    required: ["host", "port"],
+    additionalProperties: false
+  };
+}
 function stringProperty(description, defaultValue) {
   return {
     type: "string",
@@ -92957,7 +93128,7 @@ function getMailPrompt(name) {
 }
 
 // mcp/server.js
-var accounts = loadAccountsFromEnvironment();
+var accounts = loadAccounts();
 var connections = new MailConnectionManager(accounts);
 var service = new MailService(accounts, connections);
 var server = new Server(

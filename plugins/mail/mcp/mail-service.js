@@ -1,5 +1,10 @@
 import { simpleParser } from "mailparser";
 import { publicAccount, resolveAccount } from "./config.js";
+import {
+  deleteAccount as deleteAccountFromStore,
+  loadAccounts,
+  saveAccount as saveAccountToStore,
+} from "./account-store.js";
 
 const MAX_BODY_CHARS = 100_000;
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -23,6 +28,20 @@ export class MailService {
 
   getAccount(accountId) {
     return publicAccount(resolveAccount(this.accounts, accountId));
+  }
+
+  saveAccount(input) {
+    const saved = saveAccountToStore(input);
+    this.accounts = loadAccounts();
+    this.connections.reloadAccounts(this.accounts);
+    return saved;
+  }
+
+  deleteAccount(accountId) {
+    const remaining = deleteAccountFromStore(accountId);
+    this.accounts = loadAccounts();
+    this.connections.dropAccount(accountId);
+    return remaining;
   }
 
   testAccount(accountId, scope = "both") {

@@ -24,7 +24,7 @@ const providerPresets = {
 };
 
 const state = {
-  settings: { accounts: [], canPersistCredentials: false },
+  accounts: [],
   selectedAccountId: null,
   selectedMailboxId: "INBOX",
   selectedMessageKey: null,
@@ -120,7 +120,7 @@ async function callTool(name, args = {}) {
 async function initialize() {
   bindEvents();
   await refreshSettings();
-  if (state.settings.accounts.length === 0) {
+  if (state.accounts.length === 0) {
     renderAccounts();
     renderFolders();
     renderNoAccounts();
@@ -128,7 +128,7 @@ async function initialize() {
     return;
   }
   state.selectedAccountId = chooseInitialAccountId(
-    state.settings.accounts,
+    state.accounts,
     state.selectedAccountId,
   );
   renderAccounts();
@@ -138,9 +138,10 @@ async function initialize() {
 }
 
 async function refreshSettings() {
-  state.settings = await window.shell.mailAccounts.list();
+  const result = await callTool("accounts", {});
+  state.accounts = result.accounts ?? [];
   if (state.selectedAccountId &&
-      !state.settings.accounts.some((account) => account.id === state.selectedAccountId)) {
+      !state.accounts.some((account) => account.id === state.selectedAccountId)) {
     state.selectedAccountId = null;
   }
   renderAccounts();
@@ -247,9 +248,9 @@ async function searchMail(query) {
 function renderAccounts() {
   const list = elements["account-list"];
   list.replaceChildren();
-  elements["account-count"].textContent = String(state.settings.accounts.length);
+  elements["account-count"].textContent = String(state.accounts.length);
 
-  for (const account of state.settings.accounts) {
+  for (const account of state.accounts) {
     const row = create("div", "account-row");
     const button = document.createElement("button");
     button.type = "button";
@@ -384,12 +385,12 @@ function openAccountModal(account = null) {
   elements["account-email"].value = account?.email ?? "";
   elements["account-username"].value = account?.username ?? "";
   elements["account-enabled"].checked = account?.enabled ?? true;
-  elements["imap-host"].value = account?.imap.host ?? "";
-  elements["imap-port"].value = String(account?.imap.port ?? 993);
-  elements["imap-security"].value = account?.imap.starttls ? "starttls" : "tls";
-  elements["smtp-host"].value = account?.smtp.host ?? "";
-  elements["smtp-port"].value = String(account?.smtp.port ?? 465);
-  elements["smtp-security"].value = account?.smtp.starttls ? "starttls" : "tls";
+  elements["imap-host"].value = account?.incoming?.host ?? "";
+  elements["imap-port"].value = String(account?.incoming?.port ?? 993);
+  elements["imap-security"].value = account?.incoming?.secure === false ? "starttls" : "tls";
+  elements["smtp-host"].value = account?.outgoing?.host ?? "";
+  elements["smtp-port"].value = String(account?.outgoing?.port ?? 465);
+  elements["smtp-security"].value = account?.outgoing?.secure === false ? "starttls" : "tls";
   selectProviderPill(providerForAccount(account));
   elements["account-modal"].hidden = false;
   queueMicrotask(() => elements["account-name"].focus());
@@ -416,7 +417,8 @@ async function saveAccount(event) {
       imap: serverForm("imap"),
       smtp: serverForm("smtp"),
     };
-    state.settings = await window.shell.mailAccounts.save(input);
+    await callTool("account_save", input);
+    await refreshSettings();
     closeAccountModal();
     state.selectedAccountId = input.id;
     state.selectedMailboxId = "INBOX";
@@ -424,7 +426,7 @@ async function saveAccount(event) {
     await loadMailboxes(input.id);
     updateListHeading();
     await loadInbox();
-    showToast(`${input.name} saved and Mail MCP restarted.`);
+    showToast(`${input.name} saved.`);
   } catch (error) {
     elements["account-form-error"].textContent = readableMailError(error);
   } finally {
@@ -434,17 +436,18 @@ async function saveAccount(event) {
 
 async function deleteCurrentAccount() {
   const id = elements["account-id"].value;
-  const account = state.settings.accounts.find((item) => item.id === id);
+  const account = state.accounts.find((item) => item.id === id);
   if (!account || !(await confirmAccountDelete(account.name))) {
     return;
   }
   try {
-    state.settings = await window.shell.mailAccounts.delete(id);
+    const result = await callTool("account_delete", { account_id: id });
+    state.accounts = result.accounts ?? [];
     state.selectedAccountId = null;
     closeAccountModal();
     renderAccounts();
     renderFolders();
-    if (state.settings.accounts.length > 0) await loadInbox();
+    if (state.accounts.length > 0) await loadInbox();
     else renderNoAccounts();
     showToast(`${account.name} removed.`);
   } catch (error) {
@@ -531,7 +534,7 @@ function closeMessage() {
 }
 
 function updateListHeading() {
-  const account = state.settings.accounts.find((item) => item.id === state.selectedAccountId);
+  const account = state.accounts.find((item) => item.id === state.selectedAccountId);
   const mailbox = state.mailboxes.find((item) => item.id === state.selectedMailboxId);
   elements["message-list-title"].textContent = mailbox?.name || "Inbox";
   elements["message-list-context"].textContent = account ? account.name.toUpperCase() : "ALL ACCOUNTS";
@@ -539,7 +542,7 @@ function updateListHeading() {
 
 function setConnectionState(label, busy) {
   elements["connection-label"].textContent = label;
-  elements["sync-caption"].textContent = busy ? "Reading server state" : `${state.settings.accounts.length} account${state.settings.accounts.length === 1 ? "" : "s"} configured`;
+  elements["sync-caption"].textContent = busy ? "Reading server state" : `${state.accounts.length} account${state.accounts.length === 1 ? "" : "s"} configured`;
   elements["refresh-button"].disabled = busy;
 }
 
@@ -566,7 +569,6 @@ function serverForm(kind) {
     port: Number(elements[`${kind}-port`].value),
     secure: security === "tls",
     starttls: security === "starttls",
-    rejectUnauthorized: true,
   };
 }
 
@@ -586,13 +588,13 @@ function selectProviderPill(provider) {
     : "Password and app-password accounts only. OAuth-only providers arrive in a later milestone.";
   elements["account-password-help"].textContent = isGmail
     ? "Create a Google App Password, then paste it here. Leave blank while editing to keep the saved credential."
-    : "Stored encrypted by NusaShell. Leave blank while editing to keep the saved password.";
+    : "Stored by the Mail plugin. Leave blank while editing to keep the saved password.";
 }
 
 function providerForAccount(account) {
   if (!account) return "custom";
   return Object.entries(providerPresets).find(([, preset]) =>
-    preset.imap.host === account.imap.host && preset.smtp.host === account.smtp.host
+    preset.imap.host === account.incoming?.host && preset.smtp.host === account.outgoing?.host
   )?.[0] ?? "custom";
 }
 
@@ -650,13 +652,13 @@ function formatAddresses(addresses) {
 }
 
 function accountName(id) {
-  return state.settings.accounts.find((account) => account.id === id)?.name || id;
+  return state.accounts.find((account) => account.id === id)?.name || id;
 }
 
 function accountIdFromEmail(email) {
   const local = email.split("@")[0] || "mail";
   const normalized = local.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  const taken = new Set(state.settings.accounts.map((account) => account.id));
+  const taken = new Set(state.accounts.map((account) => account.id));
   if (!taken.has(normalized)) return normalized;
   let suffix = 2;
   while (taken.has(`${normalized}-${suffix}`)) suffix += 1;

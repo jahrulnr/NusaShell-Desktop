@@ -7,14 +7,14 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { loadAccountsFromEnvironment } from "./config.js";
+import { loadAccounts } from "./account-store.js";
 import { MailConnectionManager } from "./connections.js";
 import { safeMailError } from "./errors.js";
 import { MailService } from "./mail-service.js";
 import { callMailTool, MAIL_TOOLS } from "./tools.js";
 import { getMailPrompt, MAIL_PROMPTS } from "./prompts.js";
 
-const accounts = loadAccountsFromEnvironment();
+const accounts = loadAccounts();
 const connections = new MailConnectionManager(accounts);
 const service = new MailService(accounts, connections);
 const server = new Server(

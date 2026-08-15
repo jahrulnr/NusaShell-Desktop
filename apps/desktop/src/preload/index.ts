@@ -30,10 +30,6 @@ import type {
   MutationResult,
 } from "@nusashell/application";
 import type { PendingSkillWrite } from "@nusashell/contracts";
-import type {
-  PublicMailSettings,
-  SaveMailAccountInput,
-} from "../shared/mail-contract.js";
 import type { PluginWindowOptionsInput } from "../main/plugin-window-options.js";
 import type { NativeMcpInput } from "../main/ipc/native-mcp.js";
 import { resolveBuildLabel } from "../main/runtime-mode.js";
@@ -152,11 +148,6 @@ export interface ShellApi {
   readonly appBehavior: {
     get(): Promise<AppBehaviorPublic>;
     set(patch: AppBehaviorPatch): Promise<AppBehaviorPublic>;
-  };
-  readonly mailAccounts: {
-    list(): Promise<PublicMailSettings>;
-    save(input: SaveMailAccountInput): Promise<PublicMailSettings>;
-    delete(accountId: string): Promise<PublicMailSettings>;
   };
   /**
    * Generic host RPC bridge (Phase 1 of desktop-inprocess-ipc-plan).
@@ -338,11 +329,6 @@ const api: ShellApi = {
   appBehavior: {
     get: () => ipcRenderer.invoke("app-behavior:get"),
     set: (patch) => ipcRenderer.invoke("app-behavior:set", patch),
-  },
-  mailAccounts: {
-    list: () => ipcRenderer.invoke("mail-accounts:list"),
-    save: (input) => ipcRenderer.invoke("mail-accounts:save", input),
-    delete: (accountId) => ipcRenderer.invoke("mail-accounts:delete", accountId),
   },
   backend: {
     request(method, payload, opts) {

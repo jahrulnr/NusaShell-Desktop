@@ -26,40 +26,6 @@ const AccountSchema = z.object({
   smtp: ServerSchema,
 });
 
-const AccountsSchema = z.array(AccountSchema).max(20);
-const MAX_CONFIG_BYTES = 256 * 1024;
-
-/**
- * Parses credentials injected by the NusaShell host when the MCP process starts.
- * The source manifest never contains these values.
- *
- * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} environment
- */
-export function loadAccountsFromEnvironment(environment = process.env) {
-  const raw = environment.NUSASHELL_MAIL_ACCOUNTS;
-  if (!raw) return [];
-  if (Buffer.byteLength(raw, "utf8") > MAX_CONFIG_BYTES) {
-    throw new Error("Mail account configuration exceeds the 256 KiB limit");
-  }
-
-  let input;
-  try {
-    input = JSON.parse(raw);
-  } catch {
-    throw new Error("Mail account configuration is not valid JSON");
-  }
-
-  const accounts = AccountsSchema.parse(input);
-  const seen = new Set();
-  for (const account of accounts) {
-    if (seen.has(account.id)) {
-      throw new Error(`Duplicate account id: ${account.id}`);
-    }
-    seen.add(account.id);
-  }
-  return accounts;
-}
-
 /**
  * Produces the only account representation allowed in MCP responses.
  * @param {z.infer<typeof AccountSchema>} account

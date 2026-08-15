@@ -111,10 +111,10 @@ example plugin, and (once they exist) `packages/contracts` + `packages/plugin-sd
 - Keep domain pure; put I/O in infrastructure adapters.
 - For UI: follow `.agents/skills/frontend-design/SKILL.md` - distinctive,
   subject-grounded design; avoid generic AI-default palettes and layouts.
-- Do not use native browser controls or dialogs (`<select>`, `<option>`,
-  `alert()`, `confirm()`, `prompt()`). Build custom components or reuse the
-  existing UI patterns and styles. Native controls break the visual language
-  and should only appear as a last resort.
+- Do not render visible native browser controls or dialogs (`<select>`
+  option menus, `alert()`, `confirm()`, `prompt()`). Use a styled select
+  library or custom components that match the existing visual language.
+  Native controls should only appear as a last resort.
 
 ## Cross-platform support
 

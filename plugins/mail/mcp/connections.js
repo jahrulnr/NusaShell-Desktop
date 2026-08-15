@@ -16,6 +16,18 @@ export class MailConnectionManager {
     this.imapClients = new Map();
   }
 
+  reloadAccounts(accounts) {
+    this.accounts = accounts;
+  }
+
+  dropAccount(accountId) {
+    const existing = this.imapClients.get(accountId);
+    if (existing) {
+      this.imapClients.delete(accountId);
+      try { existing.close(); } catch {}
+    }
+  }
+
   async getImapClient(accountId) {
     const existing = this.imapClients.get(accountId);
     if (existing?.usable) return existing;

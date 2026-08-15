@@ -9,13 +9,13 @@ Target specification: `docs/mcp/nusashell-mail-mcp-plugin-spec.md`
 The first milestone deliberately stops at safe mailbox reading. It provides:
 
 - multiple enabled or disabled IMAP/SMTP accounts;
-- encrypted host-owned account credentials;
-- account inspection and connection tests;
+- plugin-managed account credentials (base64-encoded store file);
+- account creation, editing, deletion, inspection, and connection tests;
 - mailbox and unified-inbox listing;
 - message listing, search, MIME parsing, and reading;
 - a full-screen three-pane Mail UI;
-- the eight MCP tools `accounts`, `account_get`,
-  `account_test`, `mailboxes`, `inbox`, `messages`,
+- the ten MCP tools `accounts`, `account_get`, `account_save`,
+  `account_delete`, `account_test`, `mailboxes`, `inbox`, `messages`,
   `search`, and `read`.
 
 Sending, drafts, flag changes, move/delete operations, attachment downloads,
@@ -34,25 +34,42 @@ required instead of accepting a regular account password.
 ```mermaid
 flowchart LR
   subgraph credentials ["Credential write path"]
-    MailUI["Mail UI"] --> IpcApi["Electron IPC account API"]
-    IpcApi --> Store["MailSettingsStore"]
-    Store --> SafeFile["Electron safeStorage encrypted file"]
+    MailUI["Mail UI"] --> CallTool["window.shell.callTool"]
+    CallTool --> McpTools["account_save / account_delete MCP tools"]
+    McpTools --> StoreFile["accounts.dat (base64-encoded)"]
   end
 
-  subgraph runtime ["Plugin start/restart"]
-    Start["Plugin start/restart"] --> Resolver["application runtime environment resolver"]
-    Resolver --> Env["NUSASHELL_MAIL_ACCOUNTS in child-process memory"]
-    Env --> Mcp["Mail MCP stdio server"]
+  subgraph runtime ["Plugin start"]
+    Start["Plugin start"] --> Env["NUSASHELL_USER_DATA"]
+    Env --> ReadStore["Mail MCP reads accounts.dat"]
+    ReadStore --> Mcp["Mail MCP stdio server"]
   end
 ```
 
-The public account shape includes `hasCredential` but never the credential
-itself. Passwords and app passwords are not placed in the manifest, renderer
-state, plugin metadata, WebSocket events, tool schemas, or tool results. A
-blank password while editing preserves the existing encrypted credential.
+The Mail plugin is self-contained: it manages its own account credentials in
+a base64-encoded store file at
+`{NUSASHELL_USER_DATA}/plugins-data/nusashell.mail/accounts.dat`. The shell
+does not handle mail credentials, does not provide a mail-specific IPC API,
+and does not inject account data via environment variables. The shell's only
+responsibility is passing `NUSASHELL_USER_DATA` to the plugin process — the
+same generic mechanism used by all plugins (e.g., Kanban).
 
-Saving or deleting an account restarts the Mail MCP process so its in-memory
-configuration changes atomically from the user's perspective.
+The public account shape (`accounts`, `account_get`) never includes the
+password. Passwords and app passwords are not placed in the manifest,
+renderer state, plugin metadata, WebSocket events, or tool results.
+
+Account save/delete operations update the store file in-place and reload
+connections within the running MCP process — no shell restart is needed.
+
+### Migration from legacy safeStorage format
+
+Existing users who configured mail accounts before this change have
+credentials stored in `mail-settings.json` encrypted with Electron
+`safeStorage`. On next shell startup, a one-time migration decrypts the
+legacy file and writes the accounts to the new `accounts.dat` store, then
+deletes the legacy file. The migration code in
+`apps/desktop/src/main/migrate-mail-credentials.ts` is temporary and can be
+removed after one release cycle.
 
 ## Upstream
 
@@ -63,8 +80,8 @@ upstream license, and adaptation notes live in
 `plugins/mail/UPSTREAM.md`, `LICENSE.upstream`, and
 `THIRD_PARTY_NOTICES.md`.
 
-NusaShell's UI, broker integration, account IPC contract, credential store,
-tool names, bounded result shapes, and tests are project-specific.
+NusaShell's UI, broker integration, MCP tool contracts, credential store,
+bounded result shapes, and tests are project-specific.
 
 ## Development
 
@@ -100,8 +117,10 @@ plugin.
   forms, connections, nested frames, plugins, and media disabled. HTTPS/data
   images and inline presentation styles are allowed inside that document with
   referrer information suppressed; the document receives no shell bridge.
-- The MCP surface exposes no arbitrary protocol command, raw credential, or
-  write operation.
+- The MCP surface exposes no arbitrary protocol command or raw credential.
+- Account credentials are stored in a base64-encoded file with 0600
+  permissions. The encoding prevents casual reading but is not encryption;
+  filesystem permissions are the primary access control.
 
 Before adding send, delete, or mutation tools, define a visible approval
 policy and audit events rather than extending this read-only contract in

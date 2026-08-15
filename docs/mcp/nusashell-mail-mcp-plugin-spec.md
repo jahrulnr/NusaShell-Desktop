@@ -192,7 +192,11 @@ Credentials must never appear in:
 - plugin manifest;
 - exported diagnostics.
 
-Store secrets through a NusaShell-owned credential vault, preferably Electron `safeStorage` or an OS keychain adapter.
+Store secrets in a plugin-managed credential store file at
+`{NUSASHELL_USER_DATA}/plugins-data/nusashell.mail/accounts.dat`.
+The store file is base64-encoded with 0600 permissions. The shell does not
+handle mail credentials — the plugin owns its own credential lifecycle, the
+same pattern used by other plugins (e.g., Kanban manages its own database).
 
 Persist only credential references in the mail account record:
 
@@ -200,7 +204,7 @@ Persist only credential references in the mail account record:
 type CredentialRef = string;
 ```
 
-Refresh tokens, passwords, client secrets, and access tokens remain infrastructure data.
+Refresh tokens, passwords, client secrets, and access tokens remain plugin data.
 
 ### 4.4 Agent safety
 
