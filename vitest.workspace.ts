@@ -9,7 +9,5 @@ export default defineWorkspace([
   "packages/plugin-sdk",
   "apps/backend",
   "apps/desktop",
-  "plugins/mail",
-  "plugins/files",
   "scripts",
 ]);
