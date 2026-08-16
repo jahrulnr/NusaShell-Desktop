@@ -65,9 +65,11 @@ runs keep durable state in `<repo>/.nusashell/`.
     └── ui-design/             # launcher, agent workspace, and skills workspace visual sketches
 ```
 
-Further monorepo pieces (`plugins/`, full apps) are specified in
-[`docs/backend-structure.md`](./docs/backend-structure.md) §2 and land in later
-milestones.
+The MCP plugins repository (`NusaShell-mcp`) is **no longer a submodule**.
+First-party plugins (Files/Terminal/Notes/Kanban) are optional: install them
+explicitly with `make install-plugins NUSASHELL_MCP_REPO=<source>` or pass
+`NUSASHELL_INSTALL_PLUGINS=1` to the curl installers. Core app development
+never requires the plugins tree.
 
 ## Before changing code
 

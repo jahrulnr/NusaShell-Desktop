@@ -1,5 +1,11 @@
 # Install NusaShell
 
+> **MCP plugins are optional.** The installers install the shell only.
+> To also install the first-party MCP plugins (Files/Terminal/Notes/Kanban),
+> set `NUSASHELL_INSTALL_PLUGINS=1` when running the installer, or use
+> `make install-plugins NUSASHELL_MCP_REPO=<source>` from a repo checkout.
+
+
 Linux and macOS (no administrator access required):
 
 ```bash
