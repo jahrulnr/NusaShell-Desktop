@@ -47,6 +47,15 @@ export function isExcludedPluginPackageEntry(entryPath: string): boolean {
   );
 }
 
+/** Baseline entries a packaged shell always ships, even with no plugins/ tree. */
+const PLUGIN_STAGE_REQUIRED_PLUGINS = Object.freeze(["terminal"] as const);
+
+/** Staging subdirectories always created, even for an empty plugins/ tree. */
+const PLUGIN_STAGE_REQUIRED_SUBDIRS = Object.freeze([
+  "terminal/mcp",
+  "terminal/node_modules/node-pty",
+] as const);
+
 export async function stagePluginsResource(
   sourcePluginsRoot: string,
   stagedPluginsRoot: string,
@@ -54,9 +63,15 @@ export async function stagePluginsResource(
   const source = resolve(sourcePluginsRoot);
   const dest = resolve(stagedPluginsRoot);
   // Plugins are optional: when no plugins/ tree exists (no MCP submodule),
-  // produce an empty staging dir so packaging never fails on a missing dir.
+  // stage a deterministic empty skeleton (no plugin entries, but the
+  // required stable subdirs below) so packaging and the packaged-runtime
+  // verifier always see a well-formed plugins tree. Without the skeleton the
+  // verifier cannot distinguish "no plugins bundled" from "plugins missing".
   if (!(await pathExists(source))) {
     await mkdir(dest, { recursive: true });
+    for (const sub of PLUGIN_STAGE_REQUIRED_SUBDIRS) {
+      await mkdir(join(dest, sub), { recursive: true });
+    }
     return;
   }
   // Rename the previous tree away before copying. On fuseblk/NTFS, deleting
@@ -80,6 +95,12 @@ export async function stagePluginsResource(
     recursive: true,
     filter: (src) => !isExcludedPluginPackageEntry(src),
   });
+  // Ensure plugin directories missing from the source tree (repo has plugins
+  // but a given plugin folder is absent) still get the stable skeleton so the
+  // packaged shell and verifier can rely on a consistent plugins layout.
+  for (const plugin of PLUGIN_STAGE_REQUIRED_PLUGINS) {
+    await mkdir(join(dest, plugin), { recursive: true });
+  }
 }
 
 async function pathExists(target: string): Promise<boolean> {

@@ -92,7 +92,13 @@ const pluginsResourceRoot = join(resourcesPath, "plugins");
 // ride along `make install` into the binary tree.
 // Plugins are optional: only enforce the no-runtime-state contract when a
 // plugins tree was bundled (user opted into installing MCP plugins).
-const pluginsPresent = await pathExists(pluginsResourceRoot);
+// NOTE: after plugins/ became optional, packaging always stages a plugins
+// resource dir (possibly an empty skeleton for "no plugins" installs), so the
+// dir existing is NOT a signal. Detect actual bundled payloads by scanning
+// for any file under the tree.
+const pluginsPresent =
+  (await pathExists(pluginsResourceRoot)) &&
+  (await findFiles(pluginsResourceRoot, () => true)).length > 0;
 if (pluginsPresent) {
   const packagedNotesData = join(pluginsResourceRoot, "notes", "notes.json");
   try {

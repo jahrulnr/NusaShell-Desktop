@@ -64,3 +64,21 @@ describe("plugin package staging", () => {
     });
   });
 });
+
+describe("plugin package staging without a plugins/ tree (optional plugins)", () => {
+  it("stages an empty skeleton without any payload files", async () => {
+    const missingSource = join(await temporaryDirectory("nusashell-plugins-missing-"), "does-not-exist");
+    const dest = await temporaryDirectory("nusashell-plugins-empty-");
+
+    await stagePluginsResource(missingSource, dest);
+
+    // The packaged shell always needs a stable plugins dir for the runtime
+    // paths, including the Terminal plugin layout expected by the verifier.
+    await expect(readFile(join(dest, "terminal", "mcp", "server.cjs"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(readFile(join(dest, "terminal", "node_modules", "node-pty", "package.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+});
