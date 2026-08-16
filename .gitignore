@@ -13,3 +13,6 @@ coverage/
 .nusashell/
 plugins/notes/notes.json
 apps/desktop/.package-staging/
+
+# vtCode tool-policy artifacts (not part of the repo)
+.vtcode/
