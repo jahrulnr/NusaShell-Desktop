@@ -35,6 +35,11 @@ if [[ "$os" == darwin ]]; then
   mv "$tmp_dir/unpacked/NusaShell.app" "$home_dir/Applications/NusaShell.app"
   xattr -dr com.apple.quarantine "$home_dir/Applications/NusaShell.app" 2>/dev/null || true
   echo "Installed NusaShell $resolved_version in ~/Applications."
+
+  if [[ "${NUSASHELL_INSTALL_PLUGINS:-}" == "1" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "yes" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "y" ]]; then
+    echo "Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)..."
+    bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
+  fi
   exit 0
 fi
 
@@ -112,6 +117,12 @@ Categories=Utility;Development;
 EOF
 if [[ ":$PATH:" != *":$bin:"* ]]; then echo "Add this to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""; fi
 echo "Installed NusaShell $resolved_version."
+
+# MCP plugins are optional (explicit opt-in). Default: no plugins.
+if [[ "${NUSASHELL_INSTALL_PLUGINS:-}" == "1" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "yes" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "y" ]]; then
+  echo "Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)..."
+  bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
+fi
 
 # Detect if NusaShell is still running from a previous version. Electron's
 # single-instance lock means launching a new process would just focus the old

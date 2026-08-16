@@ -37,4 +37,26 @@ try {
     $shortcut.Save()
   }
   Write-Host "Installed NusaShell $($manifest.version)."
+
+  # MCP plugins are optional (explicit opt-in; default: none).
+  if ($env:NUSASHELL_INSTALL_PLUGINS -in @('1','yes','y','true')) {
+    $pluginRepo = if ($env:NUSASHELL_MCP_REPO) { $env:NUSASHELL_MCP_REPO } else { 'https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz' }
+    $pluginDest = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\NusaShell') 'plugins'
+    Write-Host 'Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)...'
+    try {
+      $pluginTemp = Join-Path ([IO.Path]::GetTempPath()) ('nusashell-plugins-' + [guid]::NewGuid())
+      New-Item -ItemType Directory -Force $pluginTemp | Out-Null
+      $pluginArchive = Join-Path $pluginTemp 'plugins.tar.gz'
+      Invoke-WebRequest $pluginRepo -OutFile $pluginArchive
+      Expand-Archive $pluginArchive -DestinationPath (Join-Path $pluginTemp 'src')
+      Get-ChildItem (Join-Path $pluginTemp 'src') | ForEach-Object {
+        if ((Test-Path (Join-Path $_.FullName 'manifest.json')) -and (Test-Path (Join-Path $_.FullName 'mcp'))) {
+          $targetDir = Join-Path $pluginDest $_.Name
+          if (Test-Path $targetDir) { Remove-Item $targetDir -Recurse -Force }
+          Copy-Item $_.FullName $targetDir -Recurse -Force
+          Write-Host "Installed plugin: $($_.Name)"
+        }
+      }
+    } finally { Remove-Item $pluginTemp -Recurse -Force -ErrorAction SilentlyContinue }
+  }
 } finally { Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue }

@@ -11,6 +11,15 @@ const packagedAppPath = join(
   `NusaShell-${process.platform}-${process.arch}`,
 );
 
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function findFiles(
   root: string,
   matches: (fileName: string) => boolean,
@@ -76,24 +85,31 @@ if (nativeModules.length === 0) {
   throw new Error(`No unpacked better-sqlite3 binary was found under ${unpackedPath}`);
 }
 
+const pluginsResourceRoot = join(resourcesPath, "plugins");
+
 // Never ship Notes runtime state written by local dev or E2E into installs.
 // That data must stay under Electron userData (e.g. ~/.config/nusashell), not
 // ride along `make install` into the binary tree.
-const packagedNotesData = join(resourcesPath, "plugins", "notes", "notes.json");
-try {
-  await access(packagedNotesData);
-  throw new Error(
-    `Packaged plugins must not include notes runtime state: ${packagedNotesData}`,
-  );
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+// Plugins are optional: only enforce the no-runtime-state contract when a
+// plugins tree was bundled (user opted into installing MCP plugins).
+const pluginsPresent = await pathExists(pluginsResourceRoot);
+if (pluginsPresent) {
+  const packagedNotesData = join(pluginsResourceRoot, "notes", "notes.json");
+  try {
+    await access(packagedNotesData);
+    throw new Error(
+      `Packaged plugins must not include notes runtime state: ${packagedNotesData}`,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
 }
 
 // First-party plugin unit-test trees must not ship (bloat + accidental fixtures).
-const packagedPluginTestTrees = await findFiles(
-  join(resourcesPath, "plugins"),
+const packagedPluginTestTrees = pluginsPresent ? await findFiles(
+  pluginsResourceRoot,
   (fileName) => fileName.endsWith(".test.js") || fileName.endsWith(".test.ts"),
-);
+) : [];
 const firstPartyPluginTests = packagedPluginTestTrees.filter((filePath) =>
   !filePath.includes(`${sep}node_modules${sep}`),
 );
@@ -103,24 +119,27 @@ if (firstPartyPluginTests.length > 0) {
   );
 }
 
-// Verify Terminal plugin bundle and staged node-pty
-const terminalBundle = join(resourcesPath, "plugins", "terminal", "mcp", "server.cjs");
-try {
-  await access(terminalBundle);
-} catch {
-  throw new Error(`Terminal plugin bundle not found at ${terminalBundle}`);
-}
-const terminalBundleSource = await import("node:fs/promises").then((fs) => fs.readFile(terminalBundle, "utf8"));
-if (terminalBundleSource.includes('require("@modelcontextprotocol/sdk')) {
-  throw new Error("Terminal plugin server.cjs has a bare SDK require — bundle is stale or unbundled");
+// Verify Terminal plugin bundle + staged node-pty ONLY if plugins are bundled.
+let ptyBinaryCount = 0;
+if (pluginsPresent) {
+  const terminalBundle = join(pluginsResourceRoot, "terminal", "mcp", "server.cjs");
+  try {
+    await access(terminalBundle);
+  } catch {
+    throw new Error(`Terminal plugin bundle not found at ${terminalBundle}`);
+  }
+  const terminalBundleSource = await import("node:fs/promises").then((fs) => fs.readFile(terminalBundle, "utf8"));
+  if (terminalBundleSource.includes('require("@modelcontextprotocol/sdk')) {
+    throw new Error("Terminal plugin server.cjs has a bare SDK require — bundle is stale or unbundled");
+  }
+  const terminalNodePtyDir = join(pluginsResourceRoot, "terminal", "node_modules", "node-pty");
+  ptyBinaryCount = (await findFiles(terminalNodePtyDir, (fileName) => fileName.endsWith(".node"))).length;
+  if (ptyBinaryCount === 0) {
+    throw new Error(`No node-pty .node binary found under ${terminalNodePtyDir}`);
+  }
 }
 
-const terminalNodePtyDir = join(resourcesPath, "plugins", "terminal", "node_modules", "node-pty");
-const ptyBinaries = await findFiles(terminalNodePtyDir, (fileName) => fileName.endsWith(".node"));
-if (ptyBinaries.length === 0) {
-  throw new Error(`No node-pty .node binary found under ${terminalNodePtyDir}`);
-}
-
+const extensionsNote = pluginsPresent ? `, ${ptyBinaryCount} node-pty binary/binaries` : " (no bundled plugins)";
 console.log(
-  `Verified ${basename(packagedAppPath)} runtime dependencies, agent resources, ${nativeModules.length} unpacked SQLite binary/binaries, and ${ptyBinaries.length} node-pty binary/binaries.`,
+  `Verified ${basename(packagedAppPath)} runtime dependencies, agent resources, ${nativeModules.length} unpacked SQLite binary/binaries${extensionsNote}.`,
 );

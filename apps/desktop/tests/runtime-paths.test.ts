@@ -21,8 +21,8 @@ describe("desktop runtime paths", () => {
     });
   });
 
-  it("resolves development resources from the repository root", () => {
-    const moduleDir = "/repo/apps/desktop/.vite/build";
+  it("resolves development resources from the repository root (plugins optional)", () => {
+    const moduleDir = resolve("/repo/apps/desktop/.vite/build");
     expect(resolveRuntimePaths({
       isPackaged: false,
       moduleDir,
@@ -35,5 +35,22 @@ describe("desktop runtime paths", () => {
       promptsRoot: resolve(moduleDir, "..", "..", "..", "..", "resources", "agent", "prompts"),
       docsRoot: resolve(moduleDir, "..", "..", "..", "..", "resources", "agent", "docs"),
     });
+  });
+
+  it("honors NUSASHELL_PLUGINS_ROOT for optional bundled plugins in dev", () => {
+    const previous = process.env.NUSASHELL_PLUGINS_ROOT;
+    process.env.NUSASHELL_PLUGINS_ROOT = "external-mcp";
+    try {
+      const moduleDir = resolve("/repo/apps/desktop/.vite/build");
+      const paths = resolveRuntimePaths({
+        isPackaged: false,
+        moduleDir,
+        resourcesPath: "/unused",
+      });
+      expect(paths.bundledPluginsRoot).toBe(resolve("/repo", "external-mcp"));
+    } finally {
+      if (previous === undefined) delete process.env.NUSASHELL_PLUGINS_ROOT;
+      else process.env.NUSASHELL_PLUGINS_ROOT = previous;
+    }
   });
 });

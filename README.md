@@ -87,11 +87,16 @@ Linux and macOS:
 curl -fsSL https://raw.githubusercontent.com/jahrulnr/NusaShell/master/scripts/install.sh | bash
 ```
 
-Windows PowerShell: 
+Windows PowerShell:
 
-```bash
+```powershell
 irm https://raw.githubusercontent.com/jahrulnr/NusaShell/master/scripts/install.ps1 | iex
 ```
+
+> MCP plugins (Files, Terminal, Notes, Kanban) are **optional** — the shell
+> installs without them. To install them explicitly, re-run the installer with
+> `NUSASHELL_INSTALL_PLUGINS=1`, or use the repo helper:
+> `make install-plugins NUSASHELL_MCP_REPO=<source>` (see CONTRIBUTING.md).
 See [Install NusaShell](./docs/INSTALL.md) for checksum verification, pinned versions, update behavior, and alternatives.
 
 Background learning (and future scheduled jobs) run only while NusaShell is

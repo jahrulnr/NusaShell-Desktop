@@ -21,6 +21,16 @@
  * Usage: node --experimental-strip-types scripts/stage-terminal-native.ts
  */
 import { access, cp, mkdir } from "node:fs/promises";
+import { stat } from "node:fs/promises";
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +44,7 @@ const pluginDir = join(workspaceRoot, "plugins", "terminal");
 const targetDir = join(pluginDir, "node_modules", "node-pty");
 
 function resolveNodePty(): string {
-  // Try the plugin dir first (submodule with its own npm install)
+  // Try the plugin dir first (plugin-local install)
   try {
     const pluginRequire = createRequire(join(pluginDir, "package.json"));
     return dirname(pluginRequire.resolve("node-pty/package.json"));
@@ -45,6 +55,10 @@ function resolveNodePty(): string {
 }
 
 async function main(): Promise<void> {
+  if (!(await pathExists(pluginDir))) {
+    console.log("[stage-terminal-native] no terminal plugin directory (plugins optional) — skipping");
+    return;
+  }
   const nodePtyPath = resolveNodePty();
   console.log(`[stage-terminal-native] resolved node-pty from ${nodePtyPath}`);
 

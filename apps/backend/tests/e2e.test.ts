@@ -8,10 +8,13 @@ import { NusaClient, WebSocketConnection } from "@nusashell/plugin-sdk";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PLUGINS_ROOT = resolve(__dirname, "../../../plugins");
+import { existsSync } from "node:fs";
+const pluginsAvailable = existsSync(PLUGINS_ROOT);
 const PORT = 9140;
 const NOTES_DATA_ENV = "NUSASHELL_NOTES_DATA_FILE";
 
-describe("E2E: notes plugin", () => {
+const e2eDescribe = pluginsAvailable ? describe : describe.skip;
+e2eDescribe("E2E: notes plugin", () => {
   let container: ReturnType<typeof createContainer>;
   let client: NusaClient;
   let notesDataDir: string;

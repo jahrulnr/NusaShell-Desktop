@@ -23,6 +23,10 @@ const config: ForgeConfig = {
       unpack: "**/*.node",
     },
     extraResource: [
+      // Plugins are OPTIONAL (no longer a git submodule). stagePluginsResource
+      // keeps this directory stable (existing dir replaced atomically, missing
+      // source left as an empty dir) so the packaged shell never depends on
+      // the MCP plugins repository.
       stagedPluginsRoot,
       resolve(__dirname, "..", "..", "resources", "agent"),
       resolve(__dirname, "assets", "nusashell.png"),
@@ -36,6 +40,9 @@ const config: ForgeConfig = {
   },
   hooks: {
     prePackage: async () => {
+      // Plugins become optional: stage whatever exists (empty set when the
+      // MCP repo is not checked out) so forge packaging never fails on a
+      // missing plugins/ tree.
       await stagePluginsResource(workspacePluginsRoot, stagedPluginsRoot);
     },
     readPackageJson: async (_forgeConfig, packageJson) => ({

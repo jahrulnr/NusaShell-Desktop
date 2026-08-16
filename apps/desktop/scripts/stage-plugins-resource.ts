@@ -53,6 +53,12 @@ export async function stagePluginsResource(
 ): Promise<void> {
   const source = resolve(sourcePluginsRoot);
   const dest = resolve(stagedPluginsRoot);
+  // Plugins are optional: when no plugins/ tree exists (no MCP submodule),
+  // produce an empty staging dir so packaging never fails on a missing dir.
+  if (!(await pathExists(source))) {
+    await mkdir(dest, { recursive: true });
+    return;
+  }
   // Rename the previous tree away before copying. On fuseblk/NTFS, deleting
   // files still open by a running packaged app can leave hidden tombstones and
   // make recursive rmdir fail with ENOTEMPTY. A same-volume rename is atomic

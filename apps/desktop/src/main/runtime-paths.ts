@@ -27,9 +27,14 @@ export function resolveRuntimePaths({
     ? resolve(resourcesPath, "agent")
     : resolve(repositoryRoot, "resources", "agent");
 
+  // Plugins are optional. The bundled root points at the resources plugins
+  // dir when present; in dev we prefer an explicit NUSASHELL_PLUGINS_ROOT env
+  // (the MCP repo is no longer a submodule) over a stale repo checkout.
   const bundledPluginsRoot = isPackaged
     ? resolve(resourcesPath, "plugins")
-    : resolve(repositoryRoot, "plugins");
+    : process.env.NUSASHELL_PLUGINS_ROOT
+      ? resolve(repositoryRoot, process.env.NUSASHELL_PLUGINS_ROOT)
+      : resolve(repositoryRoot, "plugins");
   const userPluginsRoot = userDataPath
     ? resolve(userDataPath, "plugins")
     : resolve(repositoryRoot, ".nusashell", "plugins");

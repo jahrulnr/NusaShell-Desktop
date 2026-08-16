@@ -11,6 +11,19 @@ dev:
 test:
 	pnpm -r test
 
+# MCP plugins are OPTIONAL - the shell no longer bundles or depends on the
+# NusaShell-mcp repository. Install bundled first-party plugins explicitly:
+#   make install-plugins NUSASHELL_MCP_REPO=/path/to/NusaShell-mcp
+#   make install-plugins NUSASHELL_MCP_REPO=https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz
+install-plugins:
+	@if [ -z "$${NUSASHELL_MCP_REPO:-}" ]; then \
+		echo "Set NUSASHELL_MCP_REPO to the MCP plugins source (git URL, tarball URL, or local dir)." >&2; \
+		echo "Example: make install-plugins NUSASHELL_MCP_REPO=/path/to/NusaShell-mcp" >&2; \
+		exit 1; \
+	fi
+	@bash scripts/install-plugins.sh "$${NUSASHELL_MCP_REPO}" "$${NUSASHELL_PLUGINS_DEST:-$$HOME/.local/share/nusashell/plugins}"
+
+
 # Package the desktop app and install it from the local repo into the user's
 # home directory (~/.local/share/nusashell on Linux, ~/Applications on macOS).
 # Uses `electron-forge package` (not `make`) so we skip AppImage/deb building —

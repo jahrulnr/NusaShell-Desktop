@@ -69,8 +69,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          submodules: true
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -109,8 +107,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -128,9 +124,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install terminal plugin dependencies
-        # plugins/ is a submodule with its own npm install. node-pty must be
-        # present so stage-terminal-native.ts can stage it for packaging.
+      - name: Install terminal plugin dependencies (optional)
+        # MCP plugins are no longer bundled with the shell. When the repo
+        # contains a plugins/ tree (e.g. a contributor-provided checkout),
+        # stage its native deps; a normal release build has no plugins/ and
+        # skips this step entirely.
+        if: hashFiles('plugins/terminal/package.json') != ''
         working-directory: plugins/terminal
         run: npm install
 

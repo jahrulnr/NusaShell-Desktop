@@ -47,7 +47,10 @@ export function createPluginRuntime(
   let db: SqliteDatabase | undefined;
   let syncPlugins: () => Promise<void> = async () => {};
 
-  const bundledPluginsRoot = options.bundledPluginsRoot;
+  const bundledPluginsRoot = options.bundledPluginsRoot
+    && existsSync(options.bundledPluginsRoot)
+    ? options.bundledPluginsRoot
+    : undefined;
   const userPluginsRoot = options.userPluginsRoot ?? options.pluginsRoot;
   // #49 single writable root: when bundled seeding is enabled and the bundled
   // root differs from the user root, bundled plugins are copied into the user
