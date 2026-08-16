@@ -747,10 +747,29 @@
 .agent-tool-terminal.is-error .agent-tool-terminal-meta { color: #d68d94; }
 .agent-tool-terminal.is-running .agent-tool-terminal-meta { color: #7ab5d9; }
 .agent-tool-terminal-chevron {
+  flex: 0 0 auto;
+  align-self: center;
+  justify-self: end;
   color: #66768a;
+  line-height: 1;
   transition: transform .15s ease;
 }
 .agent-tool-terminal[open] .agent-tool-terminal-chevron { transform: rotate(180deg); }
+
+/* Meta + chevron: samakan alignment dan pastikan keduanya dalam satu baris.
+   Grid summary = 24px / 1fr / auto / auto → meta kolom 3, chevron kolom 4. */
+.agent-tool-terminal summary .agent-tool-terminal-meta,
+.agent-tool-terminal summary .agent-tool-terminal-chevron {
+  align-self: center;
+}
+.agent-tool-terminal summary .agent-tool-terminal-meta {
+  justify-self: start;
+  min-width: 0;
+  max-width: 240px;
+}
+.agent-tool-terminal summary .agent-tool-terminal-chevron {
+  justify-self: end;
+}
 .agent-tool-terminal-body {
   display: grid;
   gap: 8px;
