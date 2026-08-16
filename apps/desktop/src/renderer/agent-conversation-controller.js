@@ -866,6 +866,7 @@ export class AgentConversationController {
           const card = this.createStreamingToolCard(payload.callId, payload.name, payload.args);
           streamState.toolCards.set(payload.callId, card);
           appendStreamChild(card);
+          this.updateRoomInfo();
         },
         onToolCallEnd: (payload) => {
           if (!canPaint()) return;
@@ -874,6 +875,7 @@ export class AgentConversationController {
             const next = this.updateStreamingToolCard(card, payload);
             if (next) streamState.toolCards.set(payload.callId, next);
           }
+          this.updateRoomInfo();
         },
         onAskRequest: (payload) => {
           if (!canPaint()) return;
@@ -4189,8 +4191,8 @@ export class AgentConversationController {
     if (call.status === "running" || call.status === "pending") {
       terminal.classList.add("is-running");
       terminal.classList.remove("is-success", "is-error");
-      const meta = terminal.querySelector(".agent-tool-terminal-meta");
-      if (meta) meta.textContent = "Running";
+      // Keep the status area clean during a live call: "Running" is conveyed
+      // by the pulse + the agent's own visible activity, not redundant text.
     }
     terminal.dataset.callId = call.id;
     body.appendChild(terminal);
@@ -4227,7 +4229,7 @@ export class AgentConversationController {
       if (status === "ok") el.classList.add("is-success");
       else if (status === "fail") el.classList.add("is-error");
       const meta = el.querySelector(".agent-tool-terminal-meta");
-      if (meta) meta.textContent = status === "ok" ? "OK" : status === "fail" ? "FAIL" : "Running";
+      if (meta) meta.textContent = status === "ok" ? "OK" : status === "fail" ? "FAIL" : "";
       if (summary) {
         const output = el.querySelector(".agent-tool-terminal-output");
         if (output) {
@@ -4690,7 +4692,7 @@ export class AgentConversationController {
       element(
         "span",
         "agent-tool-terminal-meta",
-        running ? "Running" : meta || (toolCall.ok === false ? "Failed" : "Completed"),
+        running ? "" : meta || (toolCall.ok === false ? "Failed" : "Completed"),
       ),
       element("span", "agent-tool-terminal-chevron", "⌄"),
     );
