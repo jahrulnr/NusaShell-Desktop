@@ -12,7 +12,7 @@ try {
   $archive = Join-Path $temp $entry.name
   Invoke-WebRequest "$base/download/v$($manifest.version)/$($entry.name)" -OutFile $archive
   if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne $entry.sha256.ToLower()) { throw 'Checksum verification failed; refusing to install.' }
-  $root = Join-Path $env:LOCALAPPDATA 'Programs\NusaShell'; $versions = Join-Path $root 'versions'; $target = Join-Path $versions $manifest.version
+  $root = Join-Path $env:LOCALAPPDATA 'Programs\NusaShell-Desktop'; $versions = Join-Path $root 'versions'; $target = Join-Path $versions $manifest.version
   New-Item -ItemType Directory -Force $versions | Out-Null
   $current = Join-Path $root 'current'; $previousVersion = ''
   if (Test-Path $current) {
@@ -26,14 +26,14 @@ try {
   $shell = New-Object -ComObject WScript.Shell
   $iconPath = Join-Path $current 'resources\nusashell.png'
   $shortcutPaths = @(
-    (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell.lnk'),
-    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NusaShell.lnk')
+    (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell-Desktop.lnk'),
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NusaShell-Desktop.lnk')
   )
   foreach ($shortcutPath in $shortcutPaths) {
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = Join-Path $current 'NusaShell.exe'
+    $shortcut.TargetPath = Join-Path $current 'NusaShell-Desktop.exe'
     $shortcut.WorkingDirectory = $current
-    $shortcut.IconLocation = "$(Join-Path $current 'NusaShell.exe'),0"
+    $shortcut.IconLocation = "$(Join-Path $current 'NusaShell-Desktop.exe'),0"
     $shortcut.Save()
   }
   Write-Host "Installed NusaShell $($manifest.version)."
@@ -41,7 +41,7 @@ try {
   # MCP plugins are optional (explicit opt-in; default: none).
   if ($env:NUSASHELL_INSTALL_PLUGINS -in @('1','yes','y','true')) {
     $pluginRepo = if ($env:NUSASHELL_MCP_REPO) { $env:NUSASHELL_MCP_REPO } else { 'https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz' }
-    $pluginDest = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\NusaShell') 'plugins'
+    $pluginDest = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs\NusaShell-Desktop') 'plugins'
     Write-Host 'Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)...'
     try {
       $pluginTemp = Join-Path ([IO.Path]::GetTempPath()) ('nusashell-plugins-' + [guid]::NewGuid())

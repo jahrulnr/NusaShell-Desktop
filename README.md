@@ -180,7 +180,7 @@ The managed agent skills library includes builtin `mcp-creator` and
 authoring and optional MCP requirements; it does not add `skill_exec`.
 
 **Persistent logs:** System logs (backend, agent, plugin, MCP) are written to
-`userData/logs/nusashell.log` via Pino multistream (stdout + file append).
+`userData/logs/nusashell-desktop.log` via Pino multistream (stdout + file append).
 The file survives restarts and is the primary source for post-incident debugging.
 
 **Security & responsibility model:** NusaShell is a broker and host for AI

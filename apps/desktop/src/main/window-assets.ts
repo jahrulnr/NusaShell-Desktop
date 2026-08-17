@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 
-export const LINUX_DESKTOP_APP_NAME = "nusashell";
+export const LINUX_DESKTOP_APP_NAME = "nusashell-desktop";
 
 interface WindowIconPathInput {
   readonly isPackaged: boolean;

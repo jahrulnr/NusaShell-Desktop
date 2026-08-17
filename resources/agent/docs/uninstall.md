@@ -19,20 +19,20 @@ Close NusaShell first. Then use the instructions for the installation method.
 ### Linux user-space installation
 
 The shell installer places the release tree under
-`~/.local/share/nusashell/`, the launcher at `~/.local/bin/nusashell`, and the
-desktop entry at `~/.local/share/applications/nusashell.desktop`. Remove those
+`~/.local/share/nusashell-desktop/`, the launcher at `~/.local/bin/nusashell-desktop`, and the
+desktop entry at `~/.local/share/applications/nusashell-desktop.desktop`. Remove those
 paths:
 
 ```bash
-rm -rf ~/.local/share/nusashell
-rm -f ~/.local/bin/nusashell
-rm -f ~/.local/share/applications/nusashell.desktop
+rm -rf ~/.local/share/nusashell-desktop
+rm -f ~/.local/bin/nusashell-desktop
+rm -f ~/.local/share/applications/nusashell-desktop.desktop
 ```
 
 If you enabled launch-at-login, also remove:
 
 ```bash
-rm -f ~/.config/autostart/nusashell.desktop
+rm -f ~/.config/autostart/nusashell-desktop.desktop
 ```
 
 For a full data wipe, remove `~/.config/nusashell-desktop/` only after confirming that
@@ -40,36 +40,36 @@ you no longer need the conversations, settings, logs, skills, or memories there.
 
 ### macOS user-space installation
 
-The installer places the app at `~/Applications/NusaShell.app`. Move that app to
+The installer places the app at `~/Applications/NusaShell-Desktop.app`. Move that app to
 the Trash or remove it from Finder. If you created a Dock shortcut, remove the
 shortcut separately.
 
 For a full data wipe, remove:
 
 ```text
-~/Library/Application Support/nusashell/
+~/Library/Application Support/nusashell-desktop/
 ```
 
 ### Windows user-space installation
 
 The PowerShell installer stores versions under
-`%LOCALAPPDATA%\Programs\NusaShell\`, keeps the active `current` junction there,
+`%LOCALAPPDATA%\Programs\NusaShell-Desktop\`, keeps the active `current` junction there,
 and creates a Start Menu shortcut at
-`%APPDATA%\Microsoft\Windows\Start Menu\Programs\NusaShell.lnk`.
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\NusaShell-Desktop.lnk`.
 
 Use Windows Settings → Apps to remove NusaShell when it is registered there. If
 the user-space installation has no registered uninstaller, close the app and
 remove the installation folder and shortcut from File Explorer or PowerShell:
 
 ```powershell
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\NusaShell"
-Remove-Item -Force "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NusaShell.lnk"
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\NusaShell-Desktop"
+Remove-Item -Force "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NusaShell-Desktop.lnk"
 ```
 
 For a full data wipe, remove:
 
 ```text
-%APPDATA%\nusashell\
+%APPDATA%\nusashell-desktop\
 ```
 
 ## Remove one plugin instead

@@ -100,7 +100,7 @@ describe("createLoginAutostart (native branches)", () => {
     const mac = createLoginAutostart({
       platform: "darwin",
       isPackaged: true,
-      exePath: "/Applications/NusaShell.app/Contents/MacOS/NusaShell",
+      exePath: "/Applications/NusaShell-Desktop.app/Contents/MacOS/NusaShell-Desktop",
       homeDir: "/Users/demo",
       setLoginItemSettings,
       getLoginItemSettings,
@@ -115,7 +115,7 @@ describe("createLoginAutostart (native branches)", () => {
     const win = createLoginAutostart({
       platform: "win32",
       isPackaged: true,
-      exePath: "C:\\\\Program Files\\\\NusaShell\\\\NusaShell.exe",
+      exePath: "C:\\\\Program Files\\\\NusaShell-Desktop\\\\NusaShell-Desktop.exe",
       homeDir: "C:\\\\Users\\\\demo",
       setLoginItemSettings,
       getLoginItemSettings,
@@ -123,7 +123,7 @@ describe("createLoginAutostart (native branches)", () => {
     await win.set(true, { hidden: true });
     expect(setLoginItemSettings).toHaveBeenLastCalledWith({
       openAtLogin: true,
-      path: "C:\\\\Program Files\\\\NusaShell\\\\NusaShell.exe",
+      path: "C:\\\\Program Files\\\\NusaShell-Desktop\\\\NusaShell-Desktop.exe",
       args: ["--hidden"],
     });
   });

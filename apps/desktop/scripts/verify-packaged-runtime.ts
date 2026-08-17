@@ -8,7 +8,7 @@ const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packagedAppPath = join(
   desktopRoot,
   "out",
-  `NusaShell-${process.platform}-${process.arch}`,
+  `NusaShell-Desktop-${process.platform}-${process.arch}`,
 );
 
 async function pathExists(target: string): Promise<boolean> {

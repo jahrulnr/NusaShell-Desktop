@@ -6,9 +6,9 @@
 # This is what `make install` runs after `pnpm desktop:make`.
 #
 # Durable application state (conversations, AI settings, notes, user plugins)
-# lives under Electron userData (prod appData/.../nusashell). This installer
+# lives under Electron userData (prod appData/.../nusashell-desktop). This installer
 # never reads or writes that directory — only the app binary under
-# ~/.local/share/nusashell (Linux) or ~/Applications (macOS).
+# ~/.local/share/nusashell-desktop (Linux) or ~/Applications (macOS).
 #
 # Usage:
 #   make install                      # build + install
@@ -32,7 +32,7 @@ case "$(uname -m)" in
 esac
 
 # Default build dir matches electron-forge package output naming.
-build_dir="${NUSASHELL_BUILD_DIR:-$repo_root/apps/desktop/out/NusaShell-${os}-${arch}}"
+build_dir="${NUSASHELL_BUILD_DIR:-$repo_root/apps/desktop/out/NusaShell-Desktop-${os}-${arch}}"
 
 if [[ ! -d "$build_dir" ]]; then
   echo "Build output not found at: $build_dir" >&2
@@ -44,21 +44,21 @@ echo "Installing NusaShell $version from local build: $build_dir"
 
 # ---- macOS: copy .app to ~/Applications ----
 if [[ "$os" == darwin ]]; then
-  app_src="$build_dir/NusaShell.app"
+  app_src="$build_dir/NusaShell-Desktop.app"
   if [[ ! -d "$app_src" ]]; then
-    echo "Expected NusaShell.app inside: $build_dir" >&2
+    echo "Expected NusaShell-Desktop.app inside: $build_dir" >&2
     exit 1
   fi
   mkdir -p "$home_dir/Applications"
-  rm -rf "$home_dir/Applications/NusaShell.app"
-  cp -R "$app_src" "$home_dir/Applications/NusaShell.app"
-  xattr -dr com.apple.quarantine "$home_dir/Applications/NusaShell.app" 2>/dev/null || true
+  rm -rf "$home_dir/Applications/NusaShell-Desktop.app"
+  cp -R "$app_src" "$home_dir/Applications/NusaShell-Desktop.app"
+  xattr -dr com.apple.quarantine "$home_dir/Applications/NusaShell-Desktop.app" 2>/dev/null || true
   echo "Installed NusaShell $version in ~/Applications."
   exit 0
 fi
 
-# ---- Linux: versioned install under ~/.local/share/nusashell ----
-root="$home_dir/.local/share/nusashell"
+# ---- Linux: versioned install under ~/.local/share/nusashell-desktop ----
+root="$home_dir/.local/share/nusashell-desktop"
 versions="$root/versions"
 current="$root/current"
 bin="$home_dir/.local/bin"
@@ -121,15 +121,15 @@ for candidate in "$versions"/*; do
   fi
 done
 
-printf '#!/usr/bin/env sh\nexec "%s/NusaShell"%s "$@"\n' "$current" "$no_sandbox" > "$bin/nusashell"
-chmod +x "$bin/nusashell"
+printf '#!/usr/bin/env sh\nexec "%s/NusaShell-Desktop"%s "$@"\n' "$current" "$no_sandbox" > "$bin/nusashell-desktop"
+chmod +x "$bin/nusashell-desktop"
 
-cat > "$home_dir/.local/share/applications/nusashell.desktop" <<EOF
+cat > "$home_dir/.local/share/applications/nusashell-desktop.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=NusaShell
 Comment=NusaShell — AI tool shell
-Exec=$bin/nusashell
+Exec=$bin/nusashell-desktop
 Icon=$current/resources/nusashell.png
 Terminal=false
 Categories=Utility;Development;
@@ -173,17 +173,17 @@ if [[ -n "$running_pid" ]]; then
         kill -9 "$running_pid" 2>/dev/null || true
         sleep 1
         echo "Launching NusaShell $version..." >&2
-        nohup "$bin/nusashell" >/dev/null 2>&1 &
+        nohup "$bin/nusashell-desktop" >/dev/null 2>&1 &
         echo "NusaShell $version launched."
         exit 0
         ;;
       *)
-        echo "Restart NusaShell manually to use the new version: nusashell" >&2
+        echo "Restart NusaShell manually to use the new version: nusashell-desktop" >&2
         ;;
     esac
   else
-    echo "Restart NusaShell manually to use the new version: nusashell" >&2
+    echo "Restart NusaShell manually to use the new version: nusashell-desktop" >&2
   fi
 else
-  echo "Run: nusashell"
+  echo "Run: nusashell-desktop"
 fi

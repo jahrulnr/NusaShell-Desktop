@@ -5,14 +5,14 @@
 # Usage:
 #   bash scripts/install-plugins.sh <source> [dest]
 #     <source>  local dir | git URL | tarball URL (NusaShell-mcp)
-#     [dest]    destination plugins root (default ~/.local/share/nusashell/plugins)
+#     [dest]    destination plugins root (default ~/.local/share/nusashell-desktop/plugins)
 #
 # This is NOT run by `make install` or the curl installers - plugins stay
 # optional and are installed only when the user asks for them explicitly.
 set -euo pipefail
 
 source_spec="${1:?usage: install-plugins.sh <source> [dest]}"
-dest="${2:-${HOME}/.local/share/nusashell/plugins}"
+dest="${2:-${HOME}/.local/share/nusashell-desktop/plugins}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/nusashell-plugins.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 

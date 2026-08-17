@@ -21,11 +21,11 @@ install-plugins:
 		echo "Example: make install-plugins NUSASHELL_MCP_REPO=/path/to/NusaShell-mcp" >&2; \
 		exit 1; \
 	fi
-	@bash scripts/install-plugins.sh "$${NUSASHELL_MCP_REPO}" "$${NUSASHELL_PLUGINS_DEST:-$$HOME/.local/share/nusashell/plugins}"
+	@bash scripts/install-plugins.sh "$${NUSASHELL_MCP_REPO}" "$${NUSASHELL_PLUGINS_DEST:-$$HOME/.local/share/nusashell-desktop/plugins}"
 
 
 # Package the desktop app and install it from the local repo into the user's
-# home directory (~/.local/share/nusashell on Linux, ~/Applications on macOS).
+# home directory (~/.local/share/nusashell-desktop on Linux, ~/Applications on macOS).
 # Uses `electron-forge package` (not `make`) so we skip AppImage/deb building —
 # those distributables are only needed for GitHub releases, not local installs.
 # This mirrors scripts/install.sh (the curl installer) but sources the app

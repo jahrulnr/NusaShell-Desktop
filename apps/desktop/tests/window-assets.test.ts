@@ -24,7 +24,7 @@ describe("window assets", () => {
   });
 
   it("uses one Linux desktop identity for the window, icon, and desktop entry", () => {
-    expect(LINUX_DESKTOP_APP_NAME).toBe("nusashell");
+    expect(LINUX_DESKTOP_APP_NAME).toBe("nusashell-desktop");
     expect(resolveLinuxDevDesktopPaths("/home/dev/.local/share")).toEqual({
       desktopEntry: resolve("/home/dev/.local/share", "applications", `${LINUX_DESKTOP_APP_NAME}.desktop`),
       icon: resolve("/home/dev/.local/share", "icons", "hicolor", "512x512", "apps", `${LINUX_DESKTOP_APP_NAME}.png`),

@@ -32,7 +32,7 @@ If applicable, add screenshots to help explain your problem.
 - AI provider/model involved (if any): [e.g. OpenAI-compatible, Ollama]
 
 **Logs**
-If relevant, attach excerpts from `userData/logs/nusashell.log`
+If relevant, attach excerpts from `userData/logs/nusashell-desktop.log`
 (see [data locations](../../resources/agent/docs/data-locations.md) for the
 OS-specific path). Redact any credentials or personal data first.
 

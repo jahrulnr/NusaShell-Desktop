@@ -18,9 +18,9 @@ for (const path of await listFiles(root)) {
   const name = path.split(/[\\/]/).pop();
   let key;
   if (name === `nusashell-${version}-linux-x64.tar.gz`) key = "linux-x64";
-  else if (name === `NusaShell-win32-x64-${version}.zip`) key = "win32-x64";
+  else if (name === `NusaShell-Desktop-win32-x64-${version}.zip`) key = "win32-x64";
   else {
-    const match = name.match(/^NusaShell-darwin-(x64|arm64)-(.+)\.zip$/);
+    const match = name.match(/^NusaShell-Desktop-darwin-(x64|arm64)-(.+)\.zip$/);
     if (match?.[2] === version) key = `darwin-${match[1]}`;
   }
   if (!key) continue;

@@ -17,7 +17,7 @@ async function registerLinuxDesktopIdentity(): Promise<void> {
     mkdir(dirname(targets.icon), { recursive: true }),
   ]);
   await Promise.all([
-    copyFile(resolve(assetsDir, "nusashell.desktop"), targets.desktopEntry),
+    copyFile(resolve(assetsDir, "nusashell-desktop.desktop"), targets.desktopEntry),
     copyFile(resolve(assetsDir, "nusashell.png"), targets.icon),
   ]);
 }

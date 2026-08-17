@@ -27,13 +27,13 @@ afterEach(async () => {
 
 describe("clean-package-output", () => {
   it("names package dirs like electron-forge (NusaShell-platform-arch)", () => {
-    expect(packageOutputDirName("linux", "x64")).toBe("NusaShell-linux-x64");
-    expect(packageOutputDirName("darwin", "arm64")).toBe("NusaShell-darwin-arm64");
+    expect(packageOutputDirName("linux", "x64")).toBe("NusaShell-Desktop-linux-x64");
+    expect(packageOutputDirName("darwin", "arm64")).toBe("NusaShell-Desktop-darwin-arm64");
   });
 
   it("renames existing package output out of the packager path", async () => {
     const outRoot = await temporaryDirectory("nusashell-clean-pkg-");
-    const dirName = "NusaShell-linux-x64";
+    const dirName = "NusaShell-Desktop-linux-x64";
     const packageDir = join(outRoot, dirName);
     await mkdir(join(packageDir, "resources"), { recursive: true });
     // Simulate NTFS/fuse tombstone that breaks forge rmdir.
@@ -57,7 +57,7 @@ describe("clean-package-output", () => {
   it("returns null when there is nothing to clear", async () => {
     const outRoot = await temporaryDirectory("nusashell-clean-empty-");
     await expect(
-      clearPackageOutput({ outRoot, packageDirName: "NusaShell-linux-x64" }),
+      clearPackageOutput({ outRoot, packageDirName: "NusaShell-Desktop-linux-x64" }),
     ).resolves.toBeNull();
     await expect(readdir(outRoot)).resolves.toEqual([]);
   });

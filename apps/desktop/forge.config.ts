@@ -15,7 +15,7 @@ const stagedPluginsRoot = resolve(__dirname, ".package-staging", "plugins");
 
 const config: ForgeConfig = {
   packagerConfig: {
-    name: "NusaShell",
+    name: "NusaShell-Desktop",
     appVersion: releaseVersion,
     buildVersion: releaseVersion,
     icon: resolve(__dirname, "assets", process.platform === "win32" ? "nusashell.ico" : "nusashell.png"),
@@ -63,21 +63,21 @@ const config: ForgeConfig = {
   makers: [
     new MakerAppImage({
       options: {
-        name: "nusashell",
-        productName: "NusaShell",
-        bin: "NusaShell",
+        name: "nusashell-desktop",
+        productName: "NusaShell-Desktop",
+        bin: "NusaShell-Desktop",
         icon: resolve(__dirname, "assets", "nusashell.png"),
       },
     }),
     new MakerDeb({
       options: {
-        name: "nusashell",
-        productName: "NusaShell",
-        bin: "NusaShell",
+        name: "nusashell-desktop",
+        productName: "NusaShell-Desktop",
+        bin: "NusaShell-Desktop",
         description: "A desktop shell for AI tools and visual MCP plugins.",
-        maintainer: "NusaShell",
+        maintainer: "NusaShell-Desktop",
         icon: resolve(__dirname, "assets", "nusashell.png"),
-        desktopTemplate: resolve(__dirname, "assets", "nusashell.desktop.ejs"),
+        desktopTemplate: resolve(__dirname, "assets", "nusashell-desktop.desktop.ejs"),
       },
     }),
     {

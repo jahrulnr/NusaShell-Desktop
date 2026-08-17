@@ -4,13 +4,13 @@ $version = (Get-Content -LiteralPath (Join-Path $repoRoot 'VERSION') -Raw).Trim(
 $buildDir = if ($env:NUSASHELL_BUILD_DIR) {
   [IO.Path]::GetFullPath($env:NUSASHELL_BUILD_DIR)
 } else {
-  Join-Path $repoRoot 'apps\desktop\out\NusaShell-win32-x64'
+  Join-Path $repoRoot 'apps\desktop\out\NusaShell-Desktop-win32-x64'
 }
 if (-not (Test-Path -LiteralPath $buildDir -PathType Container)) {
   throw "Build output not found at $buildDir. Run make install first or set NUSASHELL_BUILD_DIR."
 }
 
-$root = Join-Path $env:LOCALAPPDATA 'Programs\NusaShell'
+$root = Join-Path $env:LOCALAPPDATA 'Programs\NusaShell-Desktop'
 $versions = Join-Path $root 'versions'
 $target = Join-Path $versions $version
 $current = Join-Path $root 'current'
@@ -32,14 +32,14 @@ New-Item -ItemType Junction -Path $current -Target $target | Out-Null
 $shell = New-Object -ComObject WScript.Shell
 $iconPath = Join-Path $current 'resources\nusashell.png'
 $shortcutPaths = @(
-  (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell.lnk'),
-  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NusaShell.lnk')
+  (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\NusaShell-Desktop.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'NusaShell-Desktop.lnk')
 )
 foreach ($shortcutPath in $shortcutPaths) {
   $shortcut = $shell.CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = Join-Path $current 'NusaShell.exe'
+  $shortcut.TargetPath = Join-Path $current 'NusaShell-Desktop.exe'
   $shortcut.WorkingDirectory = $current
-  $shortcut.IconLocation = "$(Join-Path $current 'NusaShell.exe'),0"
+  $shortcut.IconLocation = "$(Join-Path $current 'NusaShell-Desktop.exe'),0"
   $shortcut.Save()
 }
 

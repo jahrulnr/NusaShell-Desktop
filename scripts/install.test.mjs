@@ -25,17 +25,21 @@ describe("installer user-data isolation", () => {
       // No destination under XDG config / Electron appData.
       expect(source).not.toMatch(/\$home_dir\/\.config\b/);
       expect(source).not.toMatch(/\$HOME\/\.config\b/);
-      expect(source).not.toMatch(/Application Support\/nusashell/);
+      expect(source).not.toMatch(/Application Support\/nusashell-desktop/);
+      expect(source).not.toMatch(/Application Support\/nusashell(?![\w-])/);
       // App binary only.
+      expect(source).toMatch(/nusashell-desktop/);
+      expect(source).not.toMatch(/\$bin\/nusashell(?![\w-])/);
+      // Installer targets the user home (not system dirs).
       expect(source).toMatch(/\.local\/share\/nusashell|Applications\/NusaShell\.app/);
     }
-    // Windows install targets LOCALAPPDATA\Programs\NusaShell, not Electron
-    // userData (%APPDATA%\nusashell — lowercase product path).
+    // Windows install targets LOCALAPPDATA\Programs\NusaShell-Desktop, not Electron
+    // userData (%APPDATA%\nusashell-desktop — lowercase product path).
     expect(windowsInstaller).toMatch(/LOCALAPPDATA.*Programs.*NusaShell/s);
     expect(windowsInstaller).toMatch(/GetFolderPath\('Desktop'\)/);
     expect(windowsInstaller).toMatch(/IconLocation/);
-    expect(windowsInstaller).not.toMatch(/\$env:APPDATA\s*['"]?\\?nusashell/i);
-    expect(windowsInstaller).not.toMatch(/\\AppData\\Roaming\\nusashell/i);
+    expect(windowsInstaller).not.toMatch(/\$env:APPDATA\s*['"]?\\?nusashell-desktop/i);
+    expect(windowsInstaller).not.toMatch(/\\AppData\\Roaming\\nusashell-desktop/i);
   });
 });
 

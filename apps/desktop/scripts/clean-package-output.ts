@@ -30,12 +30,12 @@ export function forgePlatform(): string {
   return process.env.npm_config_platform || platform();
 }
 
-/** electron-forge packager output folder name: NusaShell-<platform>-<arch> */
+/** electron-forge packager output folder name: NusaShell-Desktop-<platform>-<arch> */
 export function packageOutputDirName(
   osPlatform = forgePlatform(),
   cpuArch = forgeArch(),
 ): string {
-  return `NusaShell-${osPlatform}-${cpuArch}`;
+  return `NusaShell-Desktop-${osPlatform}-${cpuArch}`;
 }
 
 export async function pathExists(target: string): Promise<boolean> {

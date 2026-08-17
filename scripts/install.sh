@@ -9,7 +9,7 @@ repo="${NUSASHELL_REPOSITORY:-jahrulnr/NusaShell}"
 base="${NUSASHELL_RELEASE_BASE:-https://github.com/${repo}/releases}"
 version="${NUSASHELL_VERSION:-}"
 home_dir="${HOME:?HOME must be set}"
-tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/nusashell.XXXXXX")"
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/nusashell-desktop.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 download() { command -v curl >/dev/null 2>&1 && curl --fail --location --silent --show-error "$1" -o "$2" || wget -qO "$2" "$1"; }
@@ -31,19 +31,19 @@ if [[ "$os" == linux ]]; then actual_sha="$(sha256sum "$tmp_dir/$file_name" | aw
 if [[ "$os" == darwin ]]; then
   mkdir -p "$home_dir/Applications"
   unzip -q "$tmp_dir/$file_name" -d "$tmp_dir/unpacked"
-  rm -rf "$home_dir/Applications/NusaShell.app"
-  mv "$tmp_dir/unpacked/NusaShell.app" "$home_dir/Applications/NusaShell.app"
-  xattr -dr com.apple.quarantine "$home_dir/Applications/NusaShell.app" 2>/dev/null || true
+  rm -rf "$home_dir/Applications/NusaShell-Desktop.app"
+  mv "$tmp_dir/unpacked/NusaShell-Desktop.app" "$home_dir/Applications/NusaShell-Desktop.app"
+  xattr -dr com.apple.quarantine "$home_dir/Applications/NusaShell-Desktop.app" 2>/dev/null || true
   echo "Installed NusaShell $resolved_version in ~/Applications."
 
   if [[ "${NUSASHELL_INSTALL_PLUGINS:-}" == "1" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "yes" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "y" ]]; then
     echo "Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)..."
-    bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
+    bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell-desktop/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
   fi
   exit 0
 fi
 
-root="$home_dir/.local/share/nusashell"; versions="$root/versions"; current="$root/current"; bin="$home_dir/.local/bin"
+root="$home_dir/.local/share/nusashell-desktop"; versions="$root/versions"; current="$root/current"; bin="$home_dir/.local/bin"
 mkdir -p "$versions" "$bin" "$home_dir/.local/share/applications"
 previous_version=""
 if [[ -e "$current" || -L "$current" ]]; then
@@ -103,14 +103,14 @@ for candidate in "$versions"/*; do
     fi
   fi
 done
-printf '#!/usr/bin/env sh\nexec "%s/NusaShell"%s "$@"\n' "$current" "$no_sandbox" > "$bin/nusashell"
-chmod +x "$bin/nusashell"
-cat > "$home_dir/.local/share/applications/nusashell.desktop" <<EOF
+printf '#!/usr/bin/env sh\nexec "%s/NusaShell-Desktop"%s "$@"\n' "$current" "$no_sandbox" > "$bin/nusashell-desktop"
+chmod +x "$bin/nusashell-desktop"
+cat > "$home_dir/.local/share/applications/nusashell-desktop.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=NusaShell
 Comment=NusaShell — AI tool shell
-Exec=$bin/nusashell
+Exec=$bin/nusashell-desktop
 Icon=$current/resources/nusashell.png
 Terminal=false
 Categories=Utility;Development;
@@ -121,7 +121,7 @@ echo "Installed NusaShell $resolved_version."
 # MCP plugins are optional (explicit opt-in). Default: no plugins.
 if [[ "${NUSASHELL_INSTALL_PLUGINS:-}" == "1" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "yes" || "${NUSASHELL_INSTALL_PLUGINS:-}" == "y" ]]; then
   echo "Installing bundled MCP plugins (Files/Terminal/Notes/Kanban)..."
-  bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
+  bash "$(dirname "${BASH_SOURCE[0]}")/install-plugins.sh" "${NUSASHELL_MCP_REPO:-https://github.com/jahrulnr/NusaShell-mcp/archive/refs/heads/master.tar.gz}" "$HOME/.local/share/nusashell-desktop/plugins" || echo "Plugin install skipped/failed (non-fatal)." >&2
 fi
 
 # Detect if NusaShell is still running from a previous version. Electron's
@@ -159,17 +159,17 @@ if [[ -n "$running_pid" ]]; then
         kill -9 "$running_pid" 2>/dev/null || true
         sleep 1
         echo "Launching NusaShell $resolved_version..." >&2
-        nohup "$bin/nusashell" >/dev/null 2>&1 &
+        nohup "$bin/nusashell-desktop" >/dev/null 2>&1 &
         echo "NusaShell $resolved_version launched."
         exit 0
         ;;
       *)
-        echo "Restart NusaShell manually to use the new version: nusashell" >&2
+        echo "Restart NusaShell manually to use the new version: nusashell-desktop" >&2
         ;;
     esac
   else
-    echo "Restart NusaShell manually to use the new version: nusashell" >&2
+    echo "Restart NusaShell manually to use the new version: nusashell-desktop" >&2
   fi
 else
-  echo "Run: nusashell"
+  echo "Run: nusashell-desktop"
 fi

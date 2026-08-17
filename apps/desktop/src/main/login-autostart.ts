@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { AppBehaviorSettings } from "./app-behavior-settings.js";
 
-export const LOGIN_AUTOSTART_DESKTOP_NAME = "nusashell.desktop";
+export const LOGIN_AUTOSTART_DESKTOP_NAME = "nusashell-desktop.desktop";
 export const LOGIN_AUTOSTART_REQUIRES_PACKAGED =
   "Login autostart requires a packaged build";
 

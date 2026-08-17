@@ -75,7 +75,7 @@ executed once, nudged on its second appearance, and stops the loop on its third.
   resume, and Continue seal or revise that exact slot instead of mutating the
   current JSONL tail.
 - System logs (backend, agent, plugin, MCP) are persisted to
-  `userData/logs/nusashell.log` via Pino multistream (stdout + file).
+  `userData/logs/nusashell-desktop.log` via Pino multistream (stdout + file).
   The file is appended to across restarts and is safe to inspect after a crash.
 - The first user message creates a short deterministic title; the conversation
   list is newest-first and deletions require explicit confirmation.

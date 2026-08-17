@@ -35,7 +35,7 @@ Within the durable state root, the desktop app may create:
 | `user-prompt.md` | User-supplied prompt additions |
 | `app-behavior.json` | Startup, close-to-tray, and related app behavior |
 | `mail-settings.json` | **Legacy / deprecated.** Former mail settings path at the state root; one-way migrated into `plugins-data/nusashell.mail/accounts.dat` on startup when present |
-| `logs/nusashell.log` | Main application log |
+| `logs/nusashell-desktop.log` | Main application log |
 | `agent/docs-index/` | Search index for the bundled agent documentation |
 | `skills/` | User-managed local skills |
 | `memories/` | Agent memory and user-profile data |
@@ -68,7 +68,7 @@ userData. Packaging excludes plugin runtime state (`notes.json`) and first-party
 user-space installer, the bundled plugin tree is below:
 
 ```text
-~/.local/share/nusashell/versions/<version>/resources/plugins/
+~/.local/share/nusashell-desktop/versions/<version>/resources/plugins/
 ```
 
 The macOS app bundle and Windows installed app have the equivalent
