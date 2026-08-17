@@ -27,7 +27,7 @@ CI failures and risk data loss in packaged builds:
 
 | Kind | Correct home | Must NOT use |
 |---|---|---|
-| Durable app state (prod) | Electron `app.getPath("userData")` under appData/nusashell | `os.tmpdir()`, repo root, random `/tmp` |
+| Durable app state (prod) | Electron `app.getPath("userData")` under appData/nusashell-desktop | `os.tmpdir()`, repo root, random `/tmp` |
 | Durable app state (dev only) | `<repo>/.nusashell/` via `app.setPath("userData", …)` | `os.tmpdir()`, repo root (outside `.nusashell/`), random `/tmp` |
 | Bundled read-only assets | Package `resources/` or repo tree (via `getRuntimeRoot()`), including bundled `resources/plugins/` | userData, tmp |
 | User-installed plugins | `<userData>/plugins/` (writable; agent `mcp_register` admission root) | repo `plugins/`, bundled `resources/plugins/`, arbitrary URLs/downloads |
@@ -67,19 +67,19 @@ conversations, and local state stays in-tree for easy tracing. This is the
   these even if `--dev` is appended.
 - **AI stub:** `NUSASHELL_AI_STUB` is ignored when packaged.
 - This exception **must never apply when `app.isPackaged`** — packaged
-  userData always stays under appData/nusashell.
+  userData always stays under appData/nusashell-desktop.
 
 ### OS examples for packaged userData
 
 Packaged/non-dev startup explicitly sets `app.getPath("userData")` to
-`join(app.getPath("appData"), "nusashell")` on every platform. The current desktop
-app uses the lowercase `nusashell` app-data name:
+`join(app.getPath("appData"), "nusashell-desktop")` on every platform. The
+current desktop app uses the lowercase `nusashell-desktop` app-data name:
 
 | OS | Typical packaged/non-dev path |
 |---|---|
-| Linux | `~/.config/nusashell/` |
-| macOS | `~/Library/Application Support/nusashell/` |
-| Windows | `%APPDATA%\\nusashell\\` |
+| Linux | `~/.config/nusashell-desktop/` |
+| macOS | `~/Library/Application Support/nusashell-desktop/` |
+| Windows | `%APPDATA%\\nusashell-desktop\\` |
 
 These are examples for the default environment, not promises that every custom
 Electron packaging or environment override has the same parent directory. The
@@ -90,7 +90,7 @@ installation paths. Use a live `mcp_list.installPath` for a specific plugin.
 ## Consequences
 
 - Packaged and unpackaged-without-`--dev` runs write durable state under
-  Electron userData (e.g. `~/.config/nusashell/` on Linux). First run after
+  Electron userData (e.g. `~/.config/nusashell-desktop/` on Linux). First run after
   the original path-fix change re-created settings/skills/memory there.
 - Unpackaged `--dev` runs write durable state under `<repo>/.nusashell/`
   (gitignored) so dev and prod can run concurrently without sharing

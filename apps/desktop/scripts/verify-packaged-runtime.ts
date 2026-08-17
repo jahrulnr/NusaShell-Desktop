@@ -88,7 +88,7 @@ if (nativeModules.length === 0) {
 const pluginsResourceRoot = join(resourcesPath, "plugins");
 
 // Never ship Notes runtime state written by local dev or E2E into installs.
-// That data must stay under Electron userData (e.g. ~/.config/nusashell), not
+// That data must stay under Electron userData (e.g. ~/.config/nusashell-desktop), not
 // ride along `make install` into the binary tree.
 // Plugins are optional: only enforce the no-runtime-state contract when a
 // plugins tree was bundled (user opted into installing MCP plugins).

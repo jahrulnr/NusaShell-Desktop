@@ -25,8 +25,8 @@ The desktop shell uses `app.isPackaged` as the production signal (not
 
 | Mode | WS port default | Durable state location |
 | --- | --- | --- |
-| Packaged (prod) | `9130` | Electron userData under appData/nusashell |
-| Unpackaged without `--dev` | `9130` | Electron userData under appData/nusashell |
+| Packaged (prod) | `9130` | Electron userData under appData/nusashell-desktop |
+| Unpackaged without `--dev` | `9130` | Electron userData under appData/nusashell-desktop |
 | Unpackaged with `--dev` | `9131` | `<repo>/.nusashell/` (gitignored, in-tree for tracing) |
 
 The OS-specific examples and the file inventory are in

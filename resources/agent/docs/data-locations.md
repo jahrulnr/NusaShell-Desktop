@@ -8,15 +8,16 @@ release or an unpackaged development run.
 
 | Runtime | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| Packaged release or unpackaged run without `--dev` | `~/.config/nusashell/` | `~/Library/Application Support/nusashell/` | `%APPDATA%\\nusashell\\` |
+| Packaged release or unpackaged run without `--dev` | `~/.config/nusashell-desktop/` | `~/Library/Application Support/nusashell-desktop/` | `%APPDATA%\\nusashell-desktop\\` |
 | Unpackaged run with `--dev` | `<repo>/.nusashell/` | `<repo>/.nusashell/` | `<repo>\\.nusashell\\` |
 
 The `--dev` row is an intentional exception for local development. It keeps a
 dev run isolated from a packaged run and makes local state easy to inspect. The
-folder is gitignored. A packaged build always uses the explicit `appData/nusashell`
+folder is gitignored. A packaged build always uses the explicit `appData/nusashell-desktop`
 location on every platform, even if someone passes `--dev` to the executable.
-Older releases may have left `~/.config/@nusashell/desktop/` on Linux; that path
-is obsolete and is not migrated or recreated.
+Older releases may have left `~/.config/nusashell/` (and earlier
+`~/.config/@nusashell/desktop/`) on Linux; those paths are obsolete and are not
+migrated or recreated.
 
 If you are answering for a specific conversation, use its `runtime_os` value
 when choosing a row. Do not assume Linux. The app may also use

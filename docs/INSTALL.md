@@ -71,7 +71,7 @@ there, and creates a Start Menu shortcut at
 Close NusaShell before removing its files. To uninstall the Linux user-space
 installation, remove `~/.local/share/nusashell`, `~/.local/bin/nusashell`,
 `~/.local/share/applications/nusashell.desktop`, and optionally
-`~/.config/autostart/nusashell.desktop`. Remove `~/.config/nusashell` too only
+`~/.config/autostart/nusashell.desktop`. Remove `~/.config/nusashell-desktop` too only
 for a full data wipe; it contains durable app state and is not required to
 remove the program. Older releases may have used `~/.config/@nusashell/desktop/`;
 that legacy path is obsolete and is not read or recreated by the app, so move or

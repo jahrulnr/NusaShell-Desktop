@@ -32,7 +32,7 @@ install-plugins:
 # from the local electron-forge package output instead of a GitHub release.
 #
 # Safety: only installs the app binary under ~/.local (or ~/Applications).
-# Never writes durable app state under ~/.config/nusashell (or OS appData
+# Never writes durable app state under ~/.config/nusashell-desktop (or OS appData
 # equivalents). verify:package-runtime refuses to ship plugin runtime state
 # such as notes.json that local tests/dev may leave under plugins/.
 #

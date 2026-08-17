@@ -35,7 +35,7 @@ If you enabled launch-at-login, also remove:
 rm -f ~/.config/autostart/nusashell.desktop
 ```
 
-For a full data wipe, remove `~/.config/nusashell/` only after confirming that
+For a full data wipe, remove `~/.config/nusashell-desktop/` only after confirming that
 you no longer need the conversations, settings, logs, skills, or memories there.
 
 ### macOS user-space installation

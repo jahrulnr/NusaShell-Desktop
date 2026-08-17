@@ -70,7 +70,7 @@ describe("resolveDataRoot", () => {
       .toBe(join(repositoryRoot, DEV_DATA_DIRNAME));
   });
 
-  it("prod data root lives under appData/nusashell, never the repo", () => {
+  it("prod data root lives under appData/nusashell-desktop, never the repo", () => {
     expect(resolveDataRoot({ isDev: false, repositoryRoot, appDataPath }))
       .toBe(join(appDataPath, PROD_DATA_DIRNAME));
   });

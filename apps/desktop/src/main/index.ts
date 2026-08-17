@@ -73,14 +73,14 @@ const wsPort = resolveWsPort({ isDev, envPort: process.env.NUSASHELL_PORT });
 process.env.NUSASHELL_IS_DEV = String(isDev);
 
 // Linux desktop entry registration must happen before any userData override so
-// the default appData/nusashell derivation is stable in prod.
+// the default appData/nusashell-desktop derivation is stable in prod.
 if (process.platform === "linux") {
   app.setName(LINUX_DESKTOP_APP_NAME);
 }
 
 // Isolate dev durable state under <repo>/.nusashell (gitignored) so concurrent
 // prod + unpackaged-dev runs don't fight on userData or the WS port. Prod uses
-// the explicit appData/nusashell path on every platform.
+// the explicit appData/nusashell-desktop path on every platform.
 const repositoryRoot = resolve(__dirname, "..", "..", "..", "..");
 if (!isDev) {
   app.setPath("userData", join(app.getPath("appData"), PROD_DATA_DIRNAME));

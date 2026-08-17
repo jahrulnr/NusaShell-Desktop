@@ -42,7 +42,7 @@ authoritative behavioral reference for product intent.
    authoring plugins, use the matching documents in `resources/agent/docs/`
    (`data-locations.md`, `uninstall.md`, `contribute.md`, and
    `build-plugin.md`) and condition answers on Linux, macOS, or Windows. Never
-   present `~/.config/nusashell/` as a universal path; use `mcp_list.installPath`
+   present `~/.config/nusashell-desktop/` as a universal path; use `mcp_list.installPath`
    for a specific installed plugin.
 
 ### Run the PoC

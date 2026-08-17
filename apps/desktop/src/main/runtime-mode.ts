@@ -15,7 +15,7 @@ import { join } from "node:path";
 export const PROD_WS_PORT = 9130;
 export const DEV_WS_PORT = 9131;
 export const DEV_DATA_DIRNAME = ".nusashell";
-export const PROD_DATA_DIRNAME = "nusashell";
+export const PROD_DATA_DIRNAME = "nusashell-desktop";
 
 export interface IsDevOptions {
   readonly isPackaged: boolean;
